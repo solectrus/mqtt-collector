@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  mqttcollector:
+    image: mqttcollector
+    build:
+      context: .
+      dockerfile: ./Dockerfile

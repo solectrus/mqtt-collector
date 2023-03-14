@@ -1,0 +1,15 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    influxdb-client (2.9.0)
+    mqtt (0.6.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  influxdb-client
+  mqtt
+
+BUNDLED WITH
+   2.4.8
