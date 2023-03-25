@@ -14,7 +14,7 @@ mqtt_client.connect
 # Subscribe to the MQTT Topics
 mqtt_client.subscribe(ENV['MQTT_TOPIC_HOUSE_POW'])
 mqtt_client.subscribe('senec/0/ENERGY/GUI_BAT_DATA_POWER')
-mqtt_client.subscribe('senec/0/ENERGY/GUI_GRID_POW')
+mqtt_client.subscribe(ENV['MQTT_TOPIC_GRID_POW'])
 mqtt_client.subscribe('senec/0/ENERGY/GUI_INVERTER_POWER')
 mqtt_client.subscribe('senec/0/ENERGY/STAT_STATE_Text')
 mqtt_client.subscribe('0_userdata/0/PV_WB/House_no_wallbox')
