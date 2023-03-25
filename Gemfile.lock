@@ -1,13 +1,15 @@
 GEM
   remote: https://rubygems.org/
   specs:
+    dotenv (2.8.1)
     influxdb-client (2.9.0)
     mqtt (0.6.0)
 
 PLATFORMS
-  ruby
+  x86_64-darwin-22
 
 DEPENDENCIES
+  dotenv
   influxdb-client
   mqtt
 

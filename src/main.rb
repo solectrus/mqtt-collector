@@ -1,14 +1,18 @@
+require 'dotenv/load'
 require 'mqtt'
 require 'influxdb-client'
 
+# Create MQTT Client
 mqtt_client = MQTT::Client.new
-mqtt_client.host = '192.168.1.20'
-mqtt_client.port = '1888'
-mqtt_client.username = 'iobroker'
-mqtt_client.password = 'QUHtmE9Hfyf9Aw'
-mqtt_client.client_id = 'ruby_client'
+mqtt_client.host = ENV['MQTT_HOST']
+mqtt_client.port = ENV['MQTT_PORT']
+mqtt_client.username = ENV['MQTT_USER']
+mqtt_client.password = ENV['MQTT_PASSWORD']
+mqtt_client.client_id = ENV['MQTT_CLIENTID']
 mqtt_client.connect
-mqtt_client.subscribe('senec/0/ENERGY/GUI_HOUSE_POW')
+
+# Subscribe to the MQTT Topics
+mqtt_client.subscribe(ENV['MQTT_TOPIC_HOUSE_POW'])
 mqtt_client.subscribe('senec/0/ENERGY/GUI_BAT_DATA_POWER')
 mqtt_client.subscribe('senec/0/ENERGY/GUI_GRID_POW')
 mqtt_client.subscribe('senec/0/ENERGY/GUI_INVERTER_POWER')
@@ -17,13 +21,14 @@ mqtt_client.subscribe('0_userdata/0/PV_WB/House_no_wallbox')
 mqtt_client.subscribe('0_userdata/0/PV_WB/WB_POWER')
 mqtt_client.subscribe('senec/0/ENERGY/STAT_STATE_Text')
 
+# Start MQTT Client
 mqtt_client.get do |topic, message|
   puts "#{topic}: #{message}"
 
-  InfluxDB2::Client.use('http://192.168.1.30:8086',
-                        'zOtqhry06yqKeCtU82D9YWW5IPyMypfKhRNe_xCKUb_F_T6Yu3-uuMgoqhyfqc4xIeGhqTRB_gwz4ozUdaoY4g==',
-                        bucket: 'SENEC-TEST',
-                        org: 'solectrus',
+  InfluxDB2::Client.use(ENV['INFLUX_HOST'],
+                        ENV['INFLUX_TOKEN'],
+                        bucket: ENV['INFLUX_BUCKET'],
+                        org: ENV['INFLUX_ORG'],
                         precision: InfluxDB2::WritePrecision::SECOND,
                         use_ssl: false) do |influx_client|
     write_options = InfluxDB2::WriteOptions.new(write_type: InfluxDB2::WriteType::BATCHING,
