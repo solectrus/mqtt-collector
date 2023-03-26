@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 require 'dotenv/load'
 require 'mqtt'
 require 'influxdb-client'
