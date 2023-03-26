@@ -4,6 +4,19 @@ require 'dotenv/load'
 require 'mqtt'
 require 'influxdb-client'
 
+# Hash to map MQTT topic to InfluxDB topic name
+config = {}
+config[ENV['MQTT_TOPIC_HOUSE_POW']] = 'house_power'
+config[ENV['MQTT_TOPIC_BAT_CHARGE_CURRENT']] = 'bat_charge_current'
+config[ENV['MQTT_TOPIC_BAT_FUEL_CHARGE']] = 'bat_fuel_charge'
+config[ENV['MQTT_TOPIC_BAT_POWER']] = ''
+config[ENV['MQTT_TOPIC_BAT_VOLTAGE']] = 'bat_voltage'
+config[ENV['MQTT_TOPIC_CASE_TEMP']] = 'case_temp'
+config[ENV['MQTT_TOPIC_CURRENT_STATE']] = 'current_state'
+config[ENV['MQTT_TOPIC_GRID_POW']] = ''
+config[ENV['MQTT_TOPIC_INVERTER_POWER']] = 'inverter_power'
+config[ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER']] = 'wallbox_charge_power'
+
 # Create MQTT Client
 mqtt_client = MQTT::Client.new
 mqtt_client.host = ENV['MQTT_HOST']
@@ -15,18 +28,18 @@ mqtt_client.connect
 
 # Subscribe to the MQTT Topics
 mqtt_client.subscribe(ENV['MQTT_TOPIC_HOUSE_POW'])
-mqtt_client.subscribe('senec/0/ENERGY/GUI_BAT_DATA_POWER')
 mqtt_client.subscribe(ENV['MQTT_TOPIC_GRID_POW'])
-mqtt_client.subscribe('senec/0/ENERGY/GUI_INVERTER_POWER')
-mqtt_client.subscribe('senec/0/ENERGY/STAT_STATE_Text')
-mqtt_client.subscribe('0_userdata/0/PV_WB/House_no_wallbox')
-mqtt_client.subscribe('0_userdata/0/PV_WB/WB_POWER')
-mqtt_client.subscribe('senec/0/ENERGY/STAT_STATE_Text')
+mqtt_client.subscribe(ENV['MQTT_TOPIC_BAT_CHARGE_CURRENT'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_BAT_FUEL_CHARGE'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_BAT_POWER'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_BAT_VOLTAGE'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_CASE_TEMP'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_CURRENT_STATE'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_INVERTER_POWER'])
+mqtt_client.subscribe(ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER'])
 
 # Start MQTT Client
 mqtt_client.get do |topic, message|
-  puts "#{topic}: #{message}"
-
   InfluxDB2::Client.use(ENV['INFLUX_HOST'],
                         ENV['INFLUX_TOKEN'],
                         bucket: ENV['INFLUX_BUCKET'],
@@ -37,8 +50,32 @@ mqtt_client.get do |topic, message|
                                                 batch_size: 10, flush_interval: 5_000,
                                                 max_retries: 3, max_retry_delay: 15_000)
     write_api = influx_client.create_write_api(write_options:)
+
+    # convert MQTT topic name to influx name
+    topic_name = config[topic]
+
+    # check whether to use positive or negative value for BAT_POWER
+    if topic == ENV['MQTT_TOPIC_BAT_POWER']
+      topic_name = if message.to_i.positive?
+                     'bat_power_plus'
+                   else
+                     'bat_power_minus'
+                   end
+    end
+
+    # check whether to use positive or negative value for GRID_POWER
+    if topic == ENV['MQTT_TOPIC_GRID_POW']
+      topic_name = if message.to_i.positive?
+                     'grid_power_plus'
+                   else
+                     'grid_power_minus'
+                   end
+    end
+
+    puts "#{topic_name}: #{message}"
+
     point = InfluxDB2::Point.new(name: 'SENEC')
-                            .add_field(topic, message.to_i)
+                            .add_field(topic_name, message.to_i)
 
     write_api.write(data: point)
   end
