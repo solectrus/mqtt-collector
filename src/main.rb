@@ -17,6 +17,12 @@ config[ENV['MQTT_TOPIC_GRID_POW']] = ''
 config[ENV['MQTT_TOPIC_INVERTER_POWER']] = 'inverter_power'
 config[ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER']] = 'wallbox_charge_power'
 
+flipPosNegPwr = (ENV['FLIP_POS_NEG_PWR'] == 'true')
+absValueOnly= (ENV['ABS_VALUE_ONLY'] == 'true')
+
+puts "flipPosNegPwr: #{flipPosNegPwr}"
+puts "absValueOnly: #{absValueOnly}"
+
 # Create MQTT Client
 mqtt_client = MQTT::Client.new
 mqtt_client.host = ENV['MQTT_HOST']
@@ -54,9 +60,12 @@ mqtt_client.get do |topic, message|
     # convert MQTT topic name to influx name
     topic_name = config[topic]
 
+    value = message.to_i
+    isPos = value.positive?
+
     # check whether to use positive or negative value for BAT_POWER
     if topic == ENV['MQTT_TOPIC_BAT_POWER']
-      topic_name = if message.to_i.positive?
+      topic_name = if (isPos && !flipPosNegPwr)
                      'bat_power_plus'
                    else
                      'bat_power_minus'
@@ -65,17 +74,20 @@ mqtt_client.get do |topic, message|
 
     # check whether to use positive or negative value for GRID_POWER
     if topic == ENV['MQTT_TOPIC_GRID_POW']
-      topic_name = if message.to_i.positive?
+      topic_name = if (isPos && !flipPosNegPwr)
                      'grid_power_plus'
                    else
                      'grid_power_minus'
                    end
     end
 
-    puts "#{topic_name}: #{message}"
+    if absValueOnly 
+    value = isPos ? value : -value
+    end
+    puts "#{topic_name}: #{value}"
 
     point = InfluxDB2::Point.new(name: 'SENEC')
-                            .add_field(topic_name, message.to_i)
+                            .add_field(topic_name, value)
 
     write_api.write(data: point)
   end
