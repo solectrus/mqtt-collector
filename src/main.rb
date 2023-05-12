@@ -17,10 +17,13 @@ config[ENV['MQTT_TOPIC_GRID_POW']] = ''
 config[ENV['MQTT_TOPIC_INVERTER_POWER']] = 'inverter_power'
 config[ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER']] = 'wallbox_charge_power'
 
-flipPosNegPwr = (ENV['FLIP_POS_NEG_PWR'] == 'true')
+flipPosNegPwrGrid = (ENV['FLIP_POS_NEG_PWR_GRID'] == 'true')
+flipPosNegPwrBatt = (ENV['FLIP_POS_NEG_PWR_BATT'] == 'true')
+
 absValueOnly= (ENV['ABS_VALUE_ONLY'] == 'true')
 
-puts "flipPosNegPwr: #{flipPosNegPwr}"
+puts "flipPosNegPwrGrid: #{flipPosNegPwrGrid}"
+puts "flipPosNegPwrBatt: #{flipPosNegPwrBatt}"
 puts "absValueOnly: #{absValueOnly}"
 
 # Create MQTT Client
@@ -65,7 +68,7 @@ mqtt_client.get do |topic, message|
 
     # check whether to use positive or negative value for BAT_POWER
     if topic == ENV['MQTT_TOPIC_BAT_POWER']
-      topic_name = if (isPos && !flipPosNegPwr)
+      topic_name = if (isPos && !flipPosNegPwrBatt)
                      'bat_power_plus'
                    else
                      'bat_power_minus'
@@ -74,7 +77,7 @@ mqtt_client.get do |topic, message|
 
     # check whether to use positive or negative value for GRID_POWER
     if topic == ENV['MQTT_TOPIC_GRID_POW']
-      topic_name = if (isPos && !flipPosNegPwr)
+      topic_name = if (isPos && !flipPosNegPwrGrid)
                      'grid_power_plus'
                    else
                      'grid_power_minus'
