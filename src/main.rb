@@ -68,19 +68,19 @@ mqtt_client.get do |topic, message|
 
     # check whether to use positive or negative value for BAT_POWER
     if topic == ENV['MQTT_TOPIC_BAT_POWER']
-      topic_name = if (isPos && !flipPosNegPwrBatt)
-                     'bat_power_plus'
+      topic_name = if isPos
+                     (flipPosNegPwrBatt ? 'bat_power_minus' : 'bat_power_plus')
                    else
-                     'bat_power_minus'
+                     (flipPosNegPwrBatt ? 'bat_power_plus' : 'bat_power_minus')
                    end
     end
 
     # check whether to use positive or negative value for GRID_POWER
     if topic == ENV['MQTT_TOPIC_GRID_POW']
-      topic_name = if (isPos && !flipPosNegPwrGrid)
-                     'grid_power_plus'
+      topic_name = if isPos 
+                     (flipPosNegPwrGrid ? 'grid_power_minus' :'grid_power_plus')
                    else
-                     'grid_power_minus'
+                     (flipPosNegPwrGrid ? 'grid_power_plus' :'grid_power_minus')
                    end
     end
 
