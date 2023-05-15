@@ -20,7 +20,8 @@ config[ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER']] = 'wallbox_charge_power'
 flipPosNegPwrGrid = (ENV['FLIP_POS_NEG_PWR_GRID'] == 'true')
 flipPosNegPwrBatt = (ENV['FLIP_POS_NEG_PWR_BATT'] == 'true')
 
-absValueOnly= (ENV['ABS_VALUE_ONLY'] == 'true')
+absValueOnly = (ENV['ABS_VALUE_ONLY'] == 'true')
+writeZeros = (ENV['WRITE_ZEROS'] == 'true')
 
 puts "flipPosNegPwrGrid: #{flipPosNegPwrGrid}"
 puts "flipPosNegPwrBatt: #{flipPosNegPwrBatt}"
@@ -47,6 +48,13 @@ mqtt_client.subscribe(ENV['MQTT_TOPIC_CURRENT_STATE'])
 mqtt_client.subscribe(ENV['MQTT_TOPIC_INVERTER_POWER'])
 mqtt_client.subscribe(ENV['MQTT_TOPIC_WALLBOX_CHARGE_POWER'])
 
+def writePoint(write_api, field, value)
+  point = InfluxDB2::Point.new(name: 'SENEC')
+  .add_field(field, value)
+
+  write_api.write(data: point)
+end
+
 # Start MQTT Client
 mqtt_client.get do |topic, message|
   InfluxDB2::Client.use(ENV['INFLUX_HOST'],
@@ -66,22 +74,28 @@ mqtt_client.get do |topic, message|
     value = message.to_i
     isPos = value.positive?
 
+    topic_name_zero = nil
+
     # check whether to use positive or negative value for BAT_POWER
-    if topic == ENV['MQTT_TOPIC_BAT_POWER']
-      topic_name = if isPos
-                     (flipPosNegPwrBatt ? 'bat_power_minus' : 'bat_power_plus')
-                   else
-                     (flipPosNegPwrBatt ? 'bat_power_plus' : 'bat_power_minus')
-                   end
+    if topic == ENV['MQTT_TOPIC_BAT_POWER']  
+      if isPos
+        topic_name = flipPosNegPwrBatt ? 'bat_power_minus' : 'bat_power_plus'
+        topic_name_zero = flipPosNegPwrBatt ? 'bat_power_plus' : 'bat_power_minus'
+      else
+        topic_name = (flipPosNegPwrBatt ? 'bat_power_plus' : 'bat_power_minus')
+        topic_name_zero = (flipPosNegPwrBatt ? 'bat_power_minus' : 'bat_power_plus')
+      end
     end
 
     # check whether to use positive or negative value for GRID_POWER
     if topic == ENV['MQTT_TOPIC_GRID_POW']
-      topic_name = if isPos 
-                     (flipPosNegPwrGrid ? 'grid_power_minus' :'grid_power_plus')
-                   else
-                     (flipPosNegPwrGrid ? 'grid_power_plus' :'grid_power_minus')
-                   end
+      if isPos 
+        topic_name = flipPosNegPwrGrid ? 'grid_power_minus' : 'grid_power_plus'
+        topic_name_zero = flipPosNegPwrGrid ? 'grid_power_plus' : 'grid_power_minus'
+      else
+        topic_name = flipPosNegPwrGrid ? 'grid_power_plus' : 'grid_power_minus'
+        topic_name_zero = flipPosNegPwrGrid ? 'grid_power_minus' : 'grid_power_plus'
+      end
     end
 
     if absValueOnly 
@@ -89,10 +103,12 @@ mqtt_client.get do |topic, message|
     end
     puts "#{topic_name}: #{value}"
 
-    point = InfluxDB2::Point.new(name: 'SENEC')
-                            .add_field(topic_name, value)
+    writePoint(write_api, topic_name, value)
 
-    write_api.write(data: point)
+    if (writeZeros && topic_name_zero != nil)
+      writePoint(write_api, topic_name_zero, 0)
+    end
+
   end
 end
 
