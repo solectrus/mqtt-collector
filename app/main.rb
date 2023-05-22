@@ -12,7 +12,7 @@ $stdout.sync = true
 puts 'MQTT collector for SOLECTRUS, ' \
        "Version #{ENV.fetch('VERSION', '<unknown>')}, " \
        "built at #{ENV.fetch('BUILDTIME', '<unknown>')}"
-puts 'https://github.com/loebse/mqtt-collector'
+puts 'https://github.com/solectrus/mqtt-collector'
 puts 'Copyright (c) 2023 Sebastian Löb, released under the MIT License'
 puts "\n"
 

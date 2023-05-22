@@ -1,8 +1,9 @@
 version: '3.4'
 
 services:
-  mqttcollector:
-    image: mqttcollector
+  collector:
+    image: ghcr.io/solectrus/mqtt-collector:latest
+    env_file: .env
     network_mode: host
     privileged: true
     restart: unless-stopped

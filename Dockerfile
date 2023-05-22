@@ -9,7 +9,7 @@ RUN bundle config --local frozen 1 && \
     bundle clean --force
 
 FROM ruby:3.2.2-alpine
-LABEL maintainer="mail.loeb@gmail.com"
+LABEL maintainer="georg@ledermann.dev"
 
 # Decrease memory usage
 ENV MALLOC_ARENA_MAX 2
