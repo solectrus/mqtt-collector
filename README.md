@@ -68,4 +68,5 @@ bundle exec rubocop
 
 ## License
 
-Copyright (c) 2023 Sebastian Löb, released under the MIT License
+Copyright (c) 2023 Georg Ledermann <georg@ledermann.dev> and contributors
+Inspired by code provided by Sebastian Löb (@loebse) and Michael Heß (@GrimmiMeloni)
