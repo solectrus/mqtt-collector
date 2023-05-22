@@ -1,8 +1,11 @@
 version: '3.4'
 
 services:
-  collector:
+  mqtt-collector:
     image: ghcr.io/solectrus/mqtt-collector:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file: .env
     network_mode: host
     privileged: true
