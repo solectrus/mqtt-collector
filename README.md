@@ -36,14 +36,6 @@ Note: For a SENEC device there is a dedicated [senec-collector](https://github.c
 
 The Docker image support multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
 
-## Build Docker image by yourself
-
-Example for Raspberry Pi:
-
-```bash
-docker buildx build --platform linux/arm/v7 -t mqtt-collector .
-```
-
 ## Development
 
 For development you need a recent Ruby setup. On a Mac, I recommend [rbenv](https://github.com/rbenv/rbenv).
@@ -66,7 +58,15 @@ bundle exec rake
 bundle exec rubocop
 ```
 
+### Build Docker image by yourself
+
+Example for Raspberry Pi:
+
+```bash
+docker buildx build --platform linux/arm64 -t mqtt-collector .
+```
+
 ## License
 
-Copyright (c) 2023 Georg Ledermann <georg@ledermann.dev> and contributors
+Copyright (c) 2023 Georg Ledermann <georg@ledermann.dev> and contributors.\
 Inspired by code provided by Sebastian Löb (@loebse) and Michael Heß (@GrimmiMeloni)
