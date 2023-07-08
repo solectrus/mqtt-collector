@@ -1,5 +1,5 @@
 [![Continuous integration](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml/badge.svg)](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml)
-[![wakatime](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/b31336e5-23f0-408c-ae20-e6bc96b846c9.svg)](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/b31336e5-23f0-408c-ae20-e6bc96b846c9)
+[![wakatime](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85.svg)](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85)
 
 # MQTT collector
 
