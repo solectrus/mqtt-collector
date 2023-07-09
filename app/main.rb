@@ -20,7 +20,9 @@ config = Config.from_env
 
 puts "Using Ruby #{RUBY_VERSION} on platform #{RUBY_PLATFORM}"
 puts "Subscribing from MQTT broker at #{config.mqtt_url}"
-puts "Pushing to InfluxDB at #{config.influx_url}, bucket #{config.influx_bucket}"
+puts "Pushing to InfluxDB at #{config.influx_url}, " \
+       "bucket #{config.influx_bucket}, " \
+       "measurement #{config.influx_measurement}"
 puts "\n"
 
 Loop.start(config:)
