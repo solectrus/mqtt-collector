@@ -1,5 +1,7 @@
 [![Continuous integration](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml/badge.svg)](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml)
+[![Maintainability](https://api.codeclimate.com/v1/badges/22171f55998309dcdfe1/maintainability)](https://codeclimate.com/github/solectrus/mqtt-collector/maintainability)
 [![wakatime](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85.svg)](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/22171f55998309dcdfe1/test_coverage)](https://codeclimate.com/github/solectrus/mqtt-collector/test_coverage)
 
 # MQTT collector
 
