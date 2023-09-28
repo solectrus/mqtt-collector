@@ -5,7 +5,7 @@ http_interactions:
     uri: http://localhost:8086/api/v2/write?bucket=my-bucket&org=my-org&precision=s
     body:
       encoding: UTF-8
-      string: my-measurement bat_fuel_charge=80.0 1684575773
+      string: my-measurement bat_fuel_charge=80.0 1695894918
     headers:
       Accept-Encoding:
       - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
@@ -27,9 +27,9 @@ http_interactions:
       X-Influxdb-Version:
       - v2.7.1
       Date:
-      - Sat, 20 May 2023 09:42:53 GMT
+      - Thu, 28 Sep 2023 09:55:18 GMT
     body:
       encoding: UTF-8
       string: ''
-  recorded_at: Sat, 20 May 2023 09:42:53 GMT
-recorded_with: VCR 6.1.0
+  recorded_at: Thu, 28 Sep 2023 09:55:18 GMT
+recorded_with: VCR 6.2.0
