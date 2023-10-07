@@ -61,6 +61,22 @@ class Mapper
     { 'wallbox_charge_power' => value.to_f.round }
   end
 
+  def map_wallbox_charge_power0(value)
+    { 'wallbox_charge_power0' => value.to_f.round }
+  end
+
+  def map_wallbox_charge_power1(value)
+    { 'wallbox_charge_power1' => value.to_f.round }
+  end
+
+  def map_wallbox_charge_power2(value)
+    { 'wallbox_charge_power2' => value.to_f.round }
+  end
+
+  def map_wallbox_charge_power3(value)
+    { 'wallbox_charge_power3' => value.to_f.round }
+  end
+
   def map_bat_power(value)
     value = value.to_f.round
     value = -value if config.mqtt_flip_bat_power
@@ -72,6 +88,14 @@ class Mapper
       # To battery
       { 'bat_power_plus' => value, 'bat_power_minus' => 0 }
     end
+  end
+
+  def map_bat_voltage(value)
+    { 'bat_voltage' => value.to_f }
+  end
+
+  def map_bat_charge_current(value)
+    { 'bat_charge_current' => value.to_f }
   end
 
   def map_grid_pow(value)
@@ -92,7 +116,23 @@ class Mapper
     { 'current_state' => value }
   end
 
+  def map_current_state_code(value)
+    { 'current_state_code' => value.to_i }
+  end
+
+  def map_current_state_ok(value)
+    { 'current_state_ok' => value.in?(%w[true 1 OK]) }
+  end
+
   def map_case_temp(value)
     { 'case_temp' => value.to_f.round(1) }
+  end
+
+  def map_power_ratio(value)
+    { 'power_ratio' => value.to_f.round }
+  end
+
+  def map_application_version(value)
+    { 'application_version' => value }
   end
 end

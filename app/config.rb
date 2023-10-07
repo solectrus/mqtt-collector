@@ -1,5 +1,29 @@
 require 'uri'
 
+MQTT_TOPICS = %i[
+  inverter_power
+  mpp1_power
+  mpp2_power
+  mpp3_power
+  house_pow
+  bat_fuel_charge
+  wallbox_charge_power
+  wallbox_charge_power0
+  wallbox_charge_power1
+  wallbox_charge_power2
+  wallbox_charge_power3
+  bat_power
+  grid_pow
+  power_ratio
+  current_state
+  current_state_code
+  current_state_ok
+  application_version
+  case_temp
+  bat_charge_current
+  bat_voltage
+].freeze
+
 Config =
   Struct.new(
     # MQTT credentials
@@ -16,9 +40,17 @@ Config =
     :mqtt_topic_house_pow,
     :mqtt_topic_bat_fuel_charge,
     :mqtt_topic_wallbox_charge_power,
+    :mqtt_topic_wallbox_charge_power0,
+    :mqtt_topic_wallbox_charge_power1,
+    :mqtt_topic_wallbox_charge_power2,
+    :mqtt_topic_wallbox_charge_power3,
     :mqtt_topic_bat_power,
     :mqtt_topic_grid_pow,
+    :mqtt_topic_power_ratio,
     :mqtt_topic_current_state,
+    :mqtt_topic_current_state_code,
+    :mqtt_topic_current_state_ok,
+    :mqtt_topic_application_version,
     :mqtt_topic_case_temp,
     :mqtt_topic_bat_charge_current,
     :mqtt_topic_bat_voltage,
@@ -55,21 +87,7 @@ Config =
     end
 
     def self.mqtt_topics_from_env
-      %i[
-        inverter_power
-        mpp1_power
-        mpp2_power
-        mpp3_power
-        house_pow
-        bat_fuel_charge
-        wallbox_charge_power
-        bat_power
-        grid_pow
-        current_state
-        case_temp
-        bat_charge_current
-        bat_voltage
-      ].each_with_object({}) do |topic, hash|
+      MQTT_TOPICS.each_with_object({}) do |topic, hash|
         value = ENV.fetch("MQTT_TOPIC_#{topic.to_s.upcase}", nil)
         next unless value
 

@@ -26,6 +26,6 @@ class LoopTest < Minitest::Test
         VCR.use_cassette('influx_success') { Loop.start(config:, max_count: 1) }
       end
 
-    assert_match(/{"bat_fuel_charge"=>80/, out)
+    assert_match(/{"bat_charge_current"=>80/, out)
   end
 end

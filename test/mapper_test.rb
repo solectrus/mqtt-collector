@@ -24,11 +24,18 @@ VALID_ENV = {
   MQTT_TOPIC_BAT_VOLTAGE: 'senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE',
   MQTT_TOPIC_CASE_TEMP: 'senec/0/TEMPMEASURE/CASE_TEMP',
   MQTT_TOPIC_CURRENT_STATE: 'senec/0/ENERGY/STAT_STATE_Text',
+  MQTT_TOPIC_CURRENT_STATE_CODE: 'senec/0/ENERGY/STAT_STATE',
+  MQTT_TOPIC_APPLICATION_VERSION: 'senec/0/WIZARD/APPLICATION_VERSION',
   MQTT_TOPIC_MPP1_POWER: 'senec/0/PV1/MPP_POWER/0',
   MQTT_TOPIC_MPP2_POWER: 'senec/0/PV1/MPP_POWER/1',
   MQTT_TOPIC_MPP3_POWER: 'senec/0/PV1/MPP_POWER/2',
   MQTT_TOPIC_INVERTER_POWER: 'senec/0/ENERGY/GUI_INVERTER_POWER',
   MQTT_TOPIC_WALLBOX_CHARGE_POWER: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/0',
+  MQTT_TOPIC_WALLBOX_CHARGE_POWER0: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/0',
+  MQTT_TOPIC_WALLBOX_CHARGE_POWER1: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/1',
+  MQTT_TOPIC_WALLBOX_CHARGE_POWER2: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/2',
+  MQTT_TOPIC_WALLBOX_CHARGE_POWER3: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/3',
+  MQTT_TOPIC_POWER_RATIO: 'senec/0/PV1/POWER_RATIO',
 }.freeze
 
 class MapperTest < Minitest::Test
@@ -40,21 +47,31 @@ class MapperTest < Minitest::Test
     Mapper.new(config: config || default_config)
   end
 
+  EXPECTED_TOPICS = %w[
+    senec/0/ENERGY/GUI_BAT_DATA_CURRENT
+    senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE
+    senec/0/ENERGY/GUI_BAT_DATA_POWER
+    senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE
+    senec/0/ENERGY/GUI_GRID_POW
+    senec/0/ENERGY/GUI_HOUSE_POW
+    senec/0/ENERGY/GUI_INVERTER_POWER
+    senec/0/ENERGY/STAT_STATE
+    senec/0/ENERGY/STAT_STATE_Text
+    senec/0/PV1/MPP_POWER/0
+    senec/0/PV1/MPP_POWER/1
+    senec/0/PV1/MPP_POWER/2
+    senec/0/PV1/POWER_RATIO
+    senec/0/TEMPMEASURE/CASE_TEMP
+    senec/0/WALLBOX/APPARENT_CHARGING_POWER/0
+    senec/0/WALLBOX/APPARENT_CHARGING_POWER/0
+    senec/0/WALLBOX/APPARENT_CHARGING_POWER/1
+    senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
+    senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
+    senec/0/WIZARD/APPLICATION_VERSION
+  ].freeze
+
   def test_topics
-    assert_equal %w[
-                   senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE
-                   senec/0/ENERGY/GUI_BAT_DATA_POWER
-                   senec/0/ENERGY/GUI_GRID_POW
-                   senec/0/ENERGY/GUI_HOUSE_POW
-                   senec/0/ENERGY/GUI_INVERTER_POWER
-                   senec/0/ENERGY/STAT_STATE_Text
-                   senec/0/PV1/MPP_POWER/0
-                   senec/0/PV1/MPP_POWER/1
-                   senec/0/PV1/MPP_POWER/2
-                   senec/0/TEMPMEASURE/CASE_TEMP
-                   senec/0/WALLBOX/APPARENT_CHARGING_POWER/0
-                 ],
-                 mapper.topics
+    assert_equal EXPECTED_TOPICS, mapper.topics
   end
 
   def test_call_with_inverter_power
@@ -93,10 +110,42 @@ class MapperTest < Minitest::Test
     assert_equal({ 'bat_fuel_charge' => 123.5 }, hash)
   end
 
-  def test_call_with_wallbox_charge_power
+  def test_call_with_bat_charge_current
+    hash = mapper.call('senec/0/ENERGY/GUI_BAT_DATA_CURRENT', '1.612')
+
+    assert_equal({ 'bat_charge_current' => 1.612 }, hash)
+  end
+
+  def test_call_with_bat_voltage
+    hash = mapper.call('senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE', '54.2')
+
+    assert_equal({ 'bat_voltage' => 54.2 }, hash)
+  end
+
+  def test_call_with_wallbox_charge_power0
     hash = mapper.call('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', '123.45')
 
     assert_equal({ 'wallbox_charge_power' => 123 }, hash)
+    # TODO: Change to 'wallbox_charge_power0' in the next major version.
+    # Sum up 0..3 needs to be done in SOLECTRUS dashboard
+  end
+
+  def test_call_with_wallbox_charge_power1
+    hash = mapper.call('senec/0/WALLBOX/APPARENT_CHARGING_POWER/1', '123.45')
+
+    assert_equal({ 'wallbox_charge_power1' => 123 }, hash)
+  end
+
+  def test_call_with_wallbox_charge_power2
+    hash = mapper.call('senec/0/WALLBOX/APPARENT_CHARGING_POWER/2', '123.45')
+
+    assert_equal({ 'wallbox_charge_power2' => 123 }, hash)
+  end
+
+  def test_call_with_wallbox_charge_power3
+    hash = mapper.call('senec/0/WALLBOX/APPARENT_CHARGING_POWER/3', '123.45')
+
+    assert_equal({ 'wallbox_charge_power3' => 123 }, hash)
   end
 
   def test_call_with_bat_power_plus
@@ -144,10 +193,28 @@ class MapperTest < Minitest::Test
     assert_equal({ 'current_state' => 'LOADING' }, hash)
   end
 
+  def test_call_with_current_state_code
+    hash = mapper.call('senec/0/ENERGY/STAT_STATE', '14')
+
+    assert_equal({ 'current_state_code' => 14 }, hash)
+  end
+
+  def test_call_with_application_version
+    hash = mapper.call('senec/0/WIZARD/APPLICATION_VERSION', '826')
+
+    assert_equal({ 'application_version' => '826' }, hash)
+  end
+
   def test_call_with_case_temp
     hash = mapper.call('senec/0/TEMPMEASURE/CASE_TEMP', '35.2')
 
     assert_equal({ 'case_temp' => 35.2 }, hash)
+  end
+
+  def test_call_with_power_ratio
+    hash = mapper.call('senec/0/PV1/POWER_RATIO', '70')
+
+    assert_equal({ 'power_ratio' => 70 }, hash)
   end
 
   def test_call_with_unknown_topic
