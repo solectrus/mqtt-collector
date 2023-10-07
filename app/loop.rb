@@ -50,7 +50,7 @@ class Loop
     time = Time.now
 
     fields = mapper.call(topic, message)
-    puts "#{time} #{fields}"
+    puts "#{time} topic=#{topic} message=#{message} => #{fields}"
 
     [time, fields]
   end
