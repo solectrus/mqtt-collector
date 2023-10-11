@@ -57,13 +57,17 @@ class Mapper
     { 'bat_fuel_charge' => value.to_f.round(1) }
   end
 
+  ##################
   def map_wallbox_charge_power(value)
     { 'wallbox_charge_power' => value.to_f.round }
   end
-
-  def map_wallbox_charge_power0(value)
-    { 'wallbox_charge_power0' => value.to_f.round }
-  end
+  #
+  # TODO: Change this in the next major version.
+  # Summing up of 0..3 must be done in the SOLECTRUS dashboard
+  #
+  # def map_wallbox_charge_power0(value)
+  #   { 'wallbox_charge_power0' => value.to_f.round }
+  # end
 
   def map_wallbox_charge_power1(value)
     { 'wallbox_charge_power1' => value.to_f.round }

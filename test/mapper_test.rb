@@ -63,7 +63,6 @@ class MapperTest < Minitest::Test
     senec/0/PV1/POWER_RATIO
     senec/0/TEMPMEASURE/CASE_TEMP
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/0
-    senec/0/WALLBOX/APPARENT_CHARGING_POWER/0
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/1
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
@@ -126,8 +125,7 @@ class MapperTest < Minitest::Test
     hash = mapper.call('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', '123.45')
 
     assert_equal({ 'wallbox_charge_power' => 123 }, hash)
-    # TODO: Change to 'wallbox_charge_power0' in the next major version.
-    # Sum up 0..3 needs to be done in SOLECTRUS dashboard
+    # TODO: assert_equal({ 'wallbox_charge_power0' => 123 }, hash)
   end
 
   def test_call_with_wallbox_charge_power1
