@@ -125,7 +125,7 @@ class Mapper
   end
 
   def map_current_state_ok(value)
-    { 'current_state_ok' => value.in?(%w[true 1 OK]) }
+    { 'current_state_ok' => %w[true 1 OK].include?(value) }
   end
 
   def map_case_temp(value)

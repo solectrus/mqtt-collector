@@ -36,6 +36,7 @@ VALID_ENV = {
   MQTT_TOPIC_WALLBOX_CHARGE_POWER2: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/2',
   MQTT_TOPIC_WALLBOX_CHARGE_POWER3: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/3',
   MQTT_TOPIC_POWER_RATIO: 'senec/0/PV1/POWER_RATIO',
+  MQTT_TOPIC_CURRENT_STATE_OK: 'somewhere/STAT_STATE_OK',
 }.freeze
 
 class MapperTest < Minitest::Test
@@ -67,6 +68,7 @@ class MapperTest < Minitest::Test
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
     senec/0/WIZARD/APPLICATION_VERSION
+    somewhere/STAT_STATE_OK
   ].freeze
 
   def test_topics
@@ -195,6 +197,20 @@ class MapperTest < Minitest::Test
     hash = mapper.call('senec/0/ENERGY/STAT_STATE', '14')
 
     assert_equal({ 'current_state_code' => 14 }, hash)
+  end
+
+  def test_call_with_current_state_ok_true
+    %w[true 1 OK].each do |value|
+      hash = mapper.call('somewhere/STAT_STATE_OK', value)
+
+      assert_equal({ 'current_state_ok' => true }, hash)
+    end
+  end
+
+  def test_call_with_current_state_ok_false
+    hash = mapper.call('somewhere/STAT_STATE_OK', '0')
+
+    assert_equal({ 'current_state_ok' => false }, hash)
   end
 
   def test_call_with_application_version
