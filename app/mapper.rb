@@ -6,7 +6,7 @@ class Mapper
   attr_reader :config
 
   def topics
-    topic_keys.filter_map { |key| config.send("mqtt_topic_#{key}") }.sort
+    topic_keys.filter_map { |key| config.send(:"mqtt_topic_#{key}") }.sort
   end
 
   def call(topic, message)
@@ -23,7 +23,7 @@ class Mapper
   end
 
   def topic_to_method(topic)
-    method = topic_keys.find { |key| config.send("mqtt_topic_#{key}") == topic }
+    method = topic_keys.find { |key| config.send(:"mqtt_topic_#{key}") == topic }
     return unless method
 
     "map_#{method}"
