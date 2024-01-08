@@ -9,18 +9,6 @@ gem 'influxdb-client'
 # Implementation of the MQTT protocol (https://github.com/njh/ruby-mqtt)
 gem 'mqtt'
 
-# Mixin to extend objects to be handled like a Mutex. (https://github.com/ruby/mutex_m)
-gem 'mutex_m'
-
-# Arbitrary-precision decimal floating-point number library. (https://github.com/ruby/bigdecimal)
-gem 'bigdecimal'
-
-# Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
-gem 'base64'
-
-# CSV Reading and Writing (https://github.com/ruby/csv)
-gem 'csv'
-
 group :development, :test do
   # minitest provides a complete suite of testing facilities supporting TDD, BDD, mocking, and benchmarking (https://github.com/minitest/minitest)
   gem 'minitest'
