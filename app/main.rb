@@ -13,7 +13,7 @@ puts 'MQTT collector for SOLECTRUS, ' \
        "Version #{ENV.fetch('VERSION', '<unknown>')}, " \
        "built at #{ENV.fetch('BUILDTIME', '<unknown>')}"
 puts 'https://github.com/solectrus/mqtt-collector'
-puts 'Copyright (c) 2023 Georg Ledermann and contributors, released under the MIT License'
+puts 'Copyright (c) 2023-2024 Georg Ledermann and contributors, released under the MIT License'
 puts "\n"
 
 config = Config.from_env
