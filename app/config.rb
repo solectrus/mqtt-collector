@@ -56,6 +56,7 @@ Config =
     :mqtt_topic_bat_voltage,
     # MQTT options
     :mqtt_flip_bat_power,
+    :mqtt_flip_grid_pow,
     # InfluxDB credentials
     :influx_schema,
     :influx_host,
@@ -96,7 +97,10 @@ Config =
     end
 
     def self.mqtt_options_from_env
-      { mqtt_flip_bat_power: ENV.fetch('MQTT_FLIP_BAT_POWER', nil) == 'true' }
+      {
+        mqtt_flip_bat_power: ENV.fetch('MQTT_FLIP_BAT_POWER', nil) == 'true',
+        mqtt_flip_grid_pow: ENV.fetch('MQTT_FLIP_GRID_POW', nil) == 'true',
+      }
     end
 
     def self.influx_credentials_from_env

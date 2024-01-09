@@ -87,6 +87,24 @@ class ConfigTest < Minitest::Test
     refute config_flip.mqtt_flip_bat_power
   end
 
+  def test_mqtt_flip_grid_pow_true
+    config_flip =
+      ClimateControl.modify(VALID_ENV.merge(MQTT_FLIP_GRID_POW: 'true')) do
+        Config.from_env
+      end
+
+    assert config_flip.mqtt_flip_grid_pow
+  end
+
+  def test_mqtt_flip_grid_pow_false
+    config_flip =
+      ClimateControl.modify(VALID_ENV.merge(MQTT_FLIP_GRID_POW: 'false')) do
+        Config.from_env
+      end
+
+    refute config_flip.mqtt_flip_grid_pow
+  end
+
   def test_influx_methods
     VALID_ENV
       .slice(

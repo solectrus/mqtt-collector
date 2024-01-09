@@ -23,7 +23,8 @@ class Mapper
   end
 
   def topic_to_method(topic)
-    method = topic_keys.find { |key| config.send(:"mqtt_topic_#{key}") == topic }
+    method =
+      topic_keys.find { |key| config.send(:"mqtt_topic_#{key}") == topic }
     return unless method
 
     "map_#{method}"
@@ -104,6 +105,7 @@ class Mapper
 
   def map_grid_pow(value)
     value = value.to_f.round
+    value = -value if config.mqtt_flip_grid_pow
 
     if value.negative?
       # To grid

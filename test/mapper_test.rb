@@ -187,6 +187,21 @@ class MapperTest < Minitest::Test
     assert_equal({ 'grid_power_plus' => 0, 'grid_power_minus' => 123 }, hash)
   end
 
+  def test_call_with_grid_pow_minus_with_flip
+    other_config =
+      ClimateControl.modify(VALID_ENV.merge(MQTT_FLIP_GRID_POW: 'true')) do
+        Config.from_env
+      end
+
+    hash =
+      mapper(config: other_config).call(
+        'senec/0/ENERGY/GUI_GRID_POW',
+        '-123.45',
+      )
+
+    assert_equal({ 'grid_power_minus' => 0, 'grid_power_plus' => 123 }, hash)
+  end
+
   def test_call_with_current_state
     hash = mapper.call('senec/0/ENERGY/STAT_STATE_Text', 'LOADING')
 
