@@ -18,14 +18,10 @@ VALID_ENV = {
   # ---
   MQTT_TOPIC_HOUSE_POW: 'senec/0/ENERGY/GUI_HOUSE_POW',
   MQTT_TOPIC_GRID_POW: 'senec/0/ENERGY/GUI_GRID_POW',
-  MQTT_TOPIC_BAT_CHARGE_CURRENT: 'senec/0/ENERGY/GUI_BAT_DATA_CURRENT',
   MQTT_TOPIC_BAT_FUEL_CHARGE: 'senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE',
   MQTT_TOPIC_BAT_POWER: 'senec/0/ENERGY/GUI_BAT_DATA_POWER',
-  MQTT_TOPIC_BAT_VOLTAGE: 'senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE',
   MQTT_TOPIC_CASE_TEMP: 'senec/0/TEMPMEASURE/CASE_TEMP',
   MQTT_TOPIC_CURRENT_STATE: 'senec/0/ENERGY/STAT_STATE_Text',
-  MQTT_TOPIC_CURRENT_STATE_CODE: 'senec/0/ENERGY/STAT_STATE',
-  MQTT_TOPIC_APPLICATION_VERSION: 'senec/0/WIZARD/APPLICATION_VERSION',
   MQTT_TOPIC_MPP1_POWER: 'senec/0/PV1/MPP_POWER/0',
   MQTT_TOPIC_MPP2_POWER: 'senec/0/PV1/MPP_POWER/1',
   MQTT_TOPIC_MPP3_POWER: 'senec/0/PV1/MPP_POWER/2',
@@ -49,14 +45,11 @@ class MapperTest < Minitest::Test
   end
 
   EXPECTED_TOPICS = %w[
-    senec/0/ENERGY/GUI_BAT_DATA_CURRENT
     senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE
     senec/0/ENERGY/GUI_BAT_DATA_POWER
-    senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE
     senec/0/ENERGY/GUI_GRID_POW
     senec/0/ENERGY/GUI_HOUSE_POW
     senec/0/ENERGY/GUI_INVERTER_POWER
-    senec/0/ENERGY/STAT_STATE
     senec/0/ENERGY/STAT_STATE_Text
     senec/0/PV1/MPP_POWER/0
     senec/0/PV1/MPP_POWER/1
@@ -67,7 +60,6 @@ class MapperTest < Minitest::Test
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/1
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
-    senec/0/WIZARD/APPLICATION_VERSION
     somewhere/STAT_STATE_OK
   ].freeze
 
@@ -109,18 +101,6 @@ class MapperTest < Minitest::Test
     hash = mapper.call('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE', '123.45')
 
     assert_equal({ 'bat_fuel_charge' => 123.5 }, hash)
-  end
-
-  def test_call_with_bat_charge_current
-    hash = mapper.call('senec/0/ENERGY/GUI_BAT_DATA_CURRENT', '1.612')
-
-    assert_equal({ 'bat_charge_current' => 1.612 }, hash)
-  end
-
-  def test_call_with_bat_voltage
-    hash = mapper.call('senec/0/ENERGY/GUI_BAT_DATA_VOLTAGE', '54.2')
-
-    assert_equal({ 'bat_voltage' => 54.2 }, hash)
   end
 
   def test_call_with_wallbox_charge_power0
@@ -208,12 +188,6 @@ class MapperTest < Minitest::Test
     assert_equal({ 'current_state' => 'LOADING' }, hash)
   end
 
-  def test_call_with_current_state_code
-    hash = mapper.call('senec/0/ENERGY/STAT_STATE', '14')
-
-    assert_equal({ 'current_state_code' => 14 }, hash)
-  end
-
   def test_call_with_current_state_ok_true
     %w[true 1 OK].each do |value|
       hash = mapper.call('somewhere/STAT_STATE_OK', value)
@@ -226,12 +200,6 @@ class MapperTest < Minitest::Test
     hash = mapper.call('somewhere/STAT_STATE_OK', '0')
 
     assert_equal({ 'current_state_ok' => false }, hash)
-  end
-
-  def test_call_with_application_version
-    hash = mapper.call('senec/0/WIZARD/APPLICATION_VERSION', '826')
-
-    assert_equal({ 'application_version' => '826' }, hash)
   end
 
   def test_call_with_case_temp

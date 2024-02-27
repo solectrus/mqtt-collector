@@ -95,14 +95,6 @@ class Mapper
     end
   end
 
-  def map_bat_voltage(value)
-    { 'bat_voltage' => value.to_f }
-  end
-
-  def map_bat_charge_current(value)
-    { 'bat_charge_current' => value.to_f }
-  end
-
   def map_grid_pow(value)
     value = value.to_f.round
     value = -value if config.mqtt_flip_grid_pow
@@ -122,10 +114,6 @@ class Mapper
     { 'current_state' => value }
   end
 
-  def map_current_state_code(value)
-    { 'current_state_code' => value.to_i }
-  end
-
   def map_current_state_ok(value)
     { 'current_state_ok' => %w[true 1 OK].include?(value) }
   end
@@ -136,9 +124,5 @@ class Mapper
 
   def map_power_ratio(value)
     { 'power_ratio' => value.to_f.round }
-  end
-
-  def map_application_version(value)
-    { 'application_version' => value }
   end
 end

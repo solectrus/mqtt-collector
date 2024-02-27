@@ -16,12 +16,8 @@ MQTT_TOPICS = %i[
   grid_pow
   power_ratio
   current_state
-  current_state_code
   current_state_ok
-  application_version
   case_temp
-  bat_charge_current
-  bat_voltage
 ].freeze
 
 Config =
@@ -48,12 +44,8 @@ Config =
     :mqtt_topic_grid_pow,
     :mqtt_topic_power_ratio,
     :mqtt_topic_current_state,
-    :mqtt_topic_current_state_code,
     :mqtt_topic_current_state_ok,
-    :mqtt_topic_application_version,
     :mqtt_topic_case_temp,
-    :mqtt_topic_bat_charge_current,
-    :mqtt_topic_bat_voltage,
     # MQTT options
     :mqtt_flip_bat_power,
     :mqtt_flip_grid_pow,
