@@ -9,6 +9,12 @@ gem 'influxdb-client'
 # Implementation of the MQTT protocol (https://github.com/njh/ruby-mqtt)
 gem 'mqtt'
 
+# CSV Reading and Writing (https://github.com/ruby/csv)
+gem 'csv'
+
+# Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
+gem 'base64'
+
 group :development, :test do
   # minitest provides a complete suite of testing facilities supporting TDD, BDD, mocking, and benchmarking (https://github.com/minitest/minitest)
   gem 'minitest'
