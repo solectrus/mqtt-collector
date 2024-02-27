@@ -33,6 +33,7 @@ VALID_ENV = {
   MQTT_TOPIC_WALLBOX_CHARGE_POWER3: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/3',
   MQTT_TOPIC_POWER_RATIO: 'senec/0/PV1/POWER_RATIO',
   MQTT_TOPIC_CURRENT_STATE_OK: 'somewhere/STAT_STATE_OK',
+  MQTT_TOPIC_HEATPUMP_POWER: 'somewhere/HEATPUMP/POWER',
 }.freeze
 
 class MapperTest < Minitest::Test
@@ -60,6 +61,7 @@ class MapperTest < Minitest::Test
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/1
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
     senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
+    somewhere/HEATPUMP/POWER
     somewhere/STAT_STATE_OK
   ].freeze
 
@@ -212,6 +214,12 @@ class MapperTest < Minitest::Test
     hash = mapper.call('senec/0/PV1/POWER_RATIO', '70')
 
     assert_equal({ 'power_ratio' => 70 }, hash)
+  end
+
+  def test_call_with_heatpump_power
+    hash = mapper.call('somewhere/HEATPUMP/POWER', '123.45')
+
+    assert_equal({ 'heatpump_power' => 123 }, hash)
   end
 
   def test_call_with_unknown_topic

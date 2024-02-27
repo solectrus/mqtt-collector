@@ -18,6 +18,7 @@ MQTT_TOPICS = %i[
   current_state
   current_state_ok
   case_temp
+  heatpump_power
 ].freeze
 
 Config =
@@ -46,6 +47,7 @@ Config =
     :mqtt_topic_current_state,
     :mqtt_topic_current_state_ok,
     :mqtt_topic_case_temp,
+    :mqtt_topic_heatpump_power,
     # MQTT options
     :mqtt_flip_bat_power,
     :mqtt_flip_grid_pow,

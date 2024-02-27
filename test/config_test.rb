@@ -28,6 +28,7 @@ class ConfigTest < Minitest::Test
     MQTT_TOPIC_INVERTER_POWER: 'senec/0/ENERGY/GUI_INVERTER_POWER',
     MQTT_TOPIC_WALLBOX_CHARGE_POWER:
       'senec/0/WALLBOX/APPARENT_CHARGING_POWER/0',
+    MQTT_TOPIC_HEATPUMP_POWER: 'somewhere/HEATPUMP/POWER',
   }.freeze
 
   def config
@@ -61,6 +62,7 @@ class ConfigTest < Minitest::Test
         :MQTT_TOPIC_MPP3_POWER,
         :MQTT_TOPIC_INVERTER_POWER,
         :MQTT_TOPIC_WALLBOX_CHARGE_POWER,
+        :MQTT_TOPIC_HEATPUMP_POWER,
       )
       .each { |key, value| assert_equal value, config.send(key.downcase) }
   end

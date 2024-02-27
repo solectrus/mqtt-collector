@@ -125,4 +125,8 @@ class Mapper
   def map_power_ratio(value)
     { 'power_ratio' => value.to_f.round }
   end
+
+  def map_heatpump_power(value)
+    { 'heatpump_power' => value.to_f.round }
+  end
 end
