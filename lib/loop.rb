@@ -3,27 +3,35 @@ require 'influxdb-client'
 require 'influx_push'
 require 'mapper'
 
-RETRY_TIMEOUT = 5 # seconds
-
 class Loop
-  def self.start(config:, max_count: nil)
-    new(config:, max_count:).start
-  end
+  extend Forwardable
+  def_delegators :config, :logger
 
-  def initialize(config:, max_count: nil)
+  def initialize(config:, retry_wait: 5, max_count: nil)
     @config = config
     @max_count = max_count
+    @retry_wait = retry_wait
   end
 
-  attr_reader :config, :max_count
+  attr_reader :config, :max_count, :retry_wait
 
   def start
     subscribe_topics
     receive_messages
-  rescue MQTT::ProtocolException, Errno::ECONNRESET => e
+  rescue MQTT::ProtocolException, StandardError => e
     handle_exception(e)
 
-    retry
+    sleep(retry_wait)
+    # TODO: Use exponential backoff instead of fixed timeout
+    # Maybe use this gem: https://github.com/kamui/retriable
+
+    retry if max_count.nil?
+  end
+
+  def stop
+    mqtt_client&.disconnect
+  rescue MQTT::ProtocolException, StandardError => e
+    handle_exception(e)
   end
 
   def subscribe_topics
@@ -50,7 +58,7 @@ class Loop
     time = Time.now
 
     fields = mapper.call(topic, message)
-    puts "#{time} topic=#{topic} message=#{message} => #{fields}"
+    logger.info "#{time} topic=#{topic} message=#{message} => #{fields}"
 
     [time, fields]
   end
@@ -79,14 +87,10 @@ class Loop
   end
 
   def handle_exception(error)
-    puts "#{Time.now}: #{error}, will retry again in #{RETRY_TIMEOUT} seconds..."
+    logger.error "#{Time.now}: #{error}, will retry again in #{retry_wait} seconds..."
 
     # Reset MQTT client, so it will reconnect next time
     @mqtt_client&.disconnect
     @mqtt_client = nil
-
-    sleep(RETRY_TIMEOUT)
-    # TODO: Use exponential backoff instead of fixed timeout
-    # Maybe use this gem: https://github.com/kamui/retriable
   end
 end

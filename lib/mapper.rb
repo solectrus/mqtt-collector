@@ -30,7 +30,7 @@ class Mapper
     "map_#{method}"
   end
 
-  # To add a new mapping, add a new method here and a new config key in app/config.rb
+  # To add a new mapping, add a new method here and a new config key in lib/config.rb
   # The method name must be prefixed with `map_` and the config key must be prefixed with `mqtt_topic_`
   # The method must return a hash with field name and value to be sent to InfluxDB
 

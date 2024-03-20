@@ -1,4 +1,5 @@
 require 'uri'
+require 'null_logger'
 
 MQTT_TOPICS = %i[
   inverter_power
@@ -122,6 +123,12 @@ Config =
 
     def mqtt_url
       "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
+    end
+
+    attr_writer :logger
+
+    def logger
+      @logger ||= NullLogger.new
     end
 
     private

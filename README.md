@@ -41,7 +41,7 @@ For development you need a recent Ruby setup. On a Mac, I recommend [rbenv](http
 ### Run the app
 
 ```bash
-bundle exec app/main.rb
+bundle exec app.rb
 ```
 
 ### Run tests

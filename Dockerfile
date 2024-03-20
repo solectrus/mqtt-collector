@@ -32,4 +32,4 @@ WORKDIR /mqtt-collector
 COPY --from=Builder /usr/local/bundle/ /usr/local/bundle/
 COPY . /mqtt-collector/
 
-ENTRYPOINT bundle exec app/main.rb
+ENTRYPOINT bundle exec app.rb
