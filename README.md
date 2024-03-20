@@ -7,14 +7,10 @@
 
 Collect data from MQTT broker and push it to InfluxDB 2 for use with SOLECTRUS.
 
-**BEWARE:** This project has just started and should be considered experimental. If you encounter any problems, please [open an issue](https://github.com/solectrus/mqtt-collector/issues).
-
-It has been roughly tested in the following setups:
+It has been tested in the following setups:
 
 - [ioBroker](https://www.iobroker.net/) with the integrated MQTT broker and the [SENEC Home 2.1 adapter](https://github.com/nobl/ioBroker.senec)
 - [evcc](https://evcc.io/) with the [senec-home template](https://github.com/evcc-io/evcc/blob/master/templates/definition/meter/senec-home.yaml) and the [HiveMQ MQTT Broker](https://www.hivemq.com/public-mqtt-broker/)
-
-I'm **very interested** in your feedback, especially if you are using other devices or MQTT brokers. Please [open an issue](https://github.com/solectrus/mqtt-collector/issues) or use the [forum](https://github.com/orgs/solectrus/discussions).
 
 Note: For a SENEC device there is a dedicated [senec-collector](https://github.com/solectrus/senec-collector) available which communicates directly with the SENEC device via its API and does not require a MQTT broker. Also, it is able to collect additional and more accurate data from the SENEC device.
 
