@@ -21,13 +21,16 @@ Layout/LineEndStringConcatenationIndentation:
 # Metrics
 
 Metrics/AbcSize:
-  Max: 18
+  Max: 35
 
 Metrics/ClassLength:
   Enabled: false
 
 Metrics/MethodLength:
-  Max: 20
+  Max: 35
+
+Metrics/BlockLength:
+  Max: 30
 
 # Style
 
@@ -49,7 +52,7 @@ Style/TrailingCommaInHashLiteral:
 # RSpec
 
 RSpec/ExampleLength:
-  Max: 20
+  Enabled: false
 
 RSpec/NestedGroups:
   Max: 4

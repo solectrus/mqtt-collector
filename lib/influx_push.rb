@@ -12,14 +12,18 @@ class InfluxPush
 
   attr_reader :config, :flux_writer
 
-  def call(record, time:)
-    flux_writer.push(record, time:)
-  rescue StandardError => e
-    logger.error "Error while pushing to InfluxDB: #{e.message}"
+  def call(records, time:, retries: nil, retry_delay: 5)
+    retry_count = 0
+    begin
+      flux_writer.push(records, time:)
+    rescue StandardError => e
+      logger.error "Error while pushing to InfluxDB: #{e.message}"
+      retry_count += 1
 
-    # Wait a bit before trying again
-    sleep(5)
+      raise e if retries && retry_count > retries
 
-    retry
+      sleep(retry_delay)
+      retry
+    end
   end
 end

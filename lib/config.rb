@@ -1,143 +1,177 @@
 require 'uri'
 require 'null_logger'
 
-MQTT_TOPICS = %i[
-  inverter_power
-  mpp1_power
-  mpp2_power
-  mpp3_power
-  house_pow
-  bat_fuel_charge
-  wallbox_charge_power
-  wallbox_charge_power0
-  wallbox_charge_power1
-  wallbox_charge_power2
-  wallbox_charge_power3
-  bat_power
-  grid_pow
-  power_ratio
-  current_state
-  current_state_ok
-  case_temp
-  heatpump_power
-].freeze
+MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
+MAPPING_TYPES = %w[integer float string boolean].freeze
+DEPRECATED_ENV = {
+  'MQTT_TOPIC_HOUSE_POW' => %w[house_power integer],
+  'MQTT_TOPIC_GRID_POW' => %w[grid_power integer],
+  'MQTT_TOPIC_BAT_FUEL_CHARGE' => %w[bat_fuel_charge float],
+  'MQTT_TOPIC_BAT_POWER' => %w[bat_power integer],
+  'MQTT_TOPIC_CASE_TEMP' => %w[case_temp float],
+  'MQTT_TOPIC_CURRENT_STATE' => %w[current_state string],
+  'MQTT_TOPIC_MPP1_POWER' => %w[mpp1_power integer],
+  'MQTT_TOPIC_MPP2_POWER' => %w[mpp2_power integer],
+  'MQTT_TOPIC_MPP3_POWER' => %w[mpp3_power integer],
+  'MQTT_TOPIC_INVERTER_POWER' => %w[inverter_power integer],
+  'MQTT_TOPIC_POWER_RATIO' => %w[power_ratio integer],
+  'MQTT_TOPIC_WALLBOX_CHARGE_POWER' => %w[wallbox_charge_power integer],
+  'MQTT_TOPIC_WALLBOX_CHARGE_POWER1' => %w[wallbox_charge_power1 integer],
+  'MQTT_TOPIC_WALLBOX_CHARGE_POWER2' => %w[wallbox_charge_power2 integer],
+  'MQTT_TOPIC_WALLBOX_CHARGE_POWER3' => %w[wallbox_charge_power3 integer],
+  'MQTT_TOPIC_HEATPUMP_POWER' => %w[heatpump_power integer],
+}.freeze
 
-Config =
-  Struct.new(
-    # MQTT credentials
-    :mqtt_host,
-    :mqtt_port,
-    :mqtt_username,
-    :mqtt_password,
-    :mqtt_ssl,
-    # MQTT topics
-    :mqtt_topic_inverter_power,
-    :mqtt_topic_mpp1_power,
-    :mqtt_topic_mpp2_power,
-    :mqtt_topic_mpp3_power,
-    :mqtt_topic_house_pow,
-    :mqtt_topic_bat_fuel_charge,
-    :mqtt_topic_wallbox_charge_power,
-    :mqtt_topic_wallbox_charge_power0,
-    :mqtt_topic_wallbox_charge_power1,
-    :mqtt_topic_wallbox_charge_power2,
-    :mqtt_topic_wallbox_charge_power3,
-    :mqtt_topic_bat_power,
-    :mqtt_topic_grid_pow,
-    :mqtt_topic_power_ratio,
-    :mqtt_topic_current_state,
-    :mqtt_topic_current_state_ok,
-    :mqtt_topic_case_temp,
-    :mqtt_topic_heatpump_power,
-    # MQTT options
-    :mqtt_flip_bat_power,
-    :mqtt_flip_grid_pow,
+class Config
+  attr_accessor :mqtt_host,
+                :mqtt_port,
+                :mqtt_username,
+                :mqtt_password,
+                :mqtt_ssl,
+                :mappings,
+                :influx_schema,
+                :influx_host,
+                :influx_port,
+                :influx_token,
+                :influx_org,
+                :influx_bucket
+
+  def initialize(env, logger: NullLogger.new)
+    @logger = logger
+
+    # MQTT Credentials
+    @mqtt_host = env.fetch('MQTT_HOST')
+    @mqtt_port = env.fetch('MQTT_PORT')
+    @mqtt_ssl = env.fetch('MQTT_SSL', 'false') == 'true'
+    @mqtt_username = env.fetch('MQTT_USERNAME', nil)
+    @mqtt_password = env.fetch('MQTT_PASSWORD', nil)
+
     # InfluxDB credentials
-    :influx_schema,
-    :influx_host,
-    :influx_port,
-    :influx_token,
-    :influx_org,
-    :influx_bucket,
-    :influx_measurement,
-    keyword_init: true,
-  ) do
-    def self.from_env(options = {})
-      new(
-        {}.merge(mqtt_credentials_from_env)
-          .merge(mqtt_topics_from_env)
-          .merge(mqtt_options_from_env)
-          .merge(influx_credentials_from_env)
-          .merge(options),
-      )
+    @influx_schema = env.fetch('INFLUX_SCHEMA', 'http')
+    @influx_host = env.fetch('INFLUX_HOST')
+    @influx_port = env.fetch('INFLUX_PORT', '8086')
+    @influx_token = env.fetch('INFLUX_TOKEN')
+    @influx_org = env.fetch('INFLUX_ORG')
+    @influx_bucket = env.fetch('INFLUX_BUCKET')
+
+    # Mappings
+    @mappings = mappings_from(env) + deprecated_mappings_from(env)
+
+    validate_url!(influx_url)
+    validate_url!(mqtt_url)
+    validate_mappings!
+  end
+
+  def influx_url
+    "#{influx_schema}://#{influx_host}:#{influx_port}"
+  end
+
+  def mqtt_url
+    "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
+  end
+
+  attr_reader :logger
+
+  private
+
+  def mqtt_schema
+    mqtt_ssl ? 'mqtts' : 'mqtt'
+  end
+
+  def mappings_from(env)
+    mapping_vars = env.select { |key, _| key.match?(MAPPING_REGEX) }
+
+    mapping_groups = mapping_vars.group_by do |key, _|
+      key.match(MAPPING_REGEX)[1].to_i
     end
 
-    def self.mqtt_credentials_from_env
-      {
-        mqtt_host: ENV.fetch('MQTT_HOST'),
-        mqtt_port: ENV.fetch('MQTT_PORT'),
-        mqtt_ssl: ENV.fetch('MQTT_SSL', 'false') == 'true',
-        mqtt_username: ENV.fetch('MQTT_USERNAME'),
-        mqtt_password: ENV.fetch('MQTT_PASSWORD'),
-      }
-    end
-
-    def self.mqtt_topics_from_env
-      MQTT_TOPICS.each_with_object({}) do |topic, hash|
-        value = ENV.fetch("MQTT_TOPIC_#{topic.to_s.upcase}", nil)
-        next unless value
-
-        hash["mqtt_topic_#{topic}"] = value
+    mapping_groups.transform_values do |values|
+      values.to_h.transform_keys do |key|
+        key.match(MAPPING_REGEX)[2].downcase.to_sym
       end
-    end
+    end.values
+  end
 
-    def self.mqtt_options_from_env
-      {
-        mqtt_flip_bat_power: ENV.fetch('MQTT_FLIP_BAT_POWER', nil) == 'true',
-        mqtt_flip_grid_pow: ENV.fetch('MQTT_FLIP_GRID_POW', nil) == 'true',
-      }
-    end
+  def deprecated_mappings_from(env)
+    # Start index at the last existing mapping
+    index = mappings_from(env).length - 1
 
-    def self.influx_credentials_from_env
-      {
-        influx_host: ENV.fetch('INFLUX_HOST'),
-        influx_schema: ENV.fetch('INFLUX_SCHEMA', 'http'),
-        influx_port: ENV.fetch('INFLUX_PORT', '8086'),
-        influx_token: ENV.fetch('INFLUX_TOKEN'),
-        influx_org: ENV.fetch('INFLUX_ORG'),
-        influx_bucket: ENV.fetch('INFLUX_BUCKET'),
-        influx_measurement: ENV.fetch('INFLUX_MEASUREMENT'),
-      }
-    end
+    DEPRECATED_ENV.reduce([]) do |mappings, (var, field_and_type)|
+      next mappings unless env[var]
 
-    def initialize(*options)
-      super
-
-      validate_url!(influx_url)
-      validate_url!(mqtt_url)
-    end
-
-    def influx_url
-      "#{influx_schema}://#{influx_host}:#{influx_port}"
-    end
-
-    def mqtt_url
-      "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
-    end
-
-    attr_writer :logger
-
-    def logger
-      @logger ||= NullLogger.new
-    end
-
-    private
-
-    def mqtt_schema
-      mqtt_ssl ? 'mqtts' : 'mqtt'
-    end
-
-    def validate_url!(url)
-      URI.parse(url)
+      options = deprecated_mapping(env, var, field_and_type)
+      deprecation_warning(var, index += 1, options)
+      mappings.push(options)
     end
   end
+
+  def deprecated_mapping(env, var, field_and_type)
+    options = { topic: env[var] }
+
+    case var
+    when 'MQTT_TOPIC_GRID_POW'
+      if env['MQTT_FLIP_GRID_POW'] == 'true'
+        options[:field_positive] = 'grid_power_minus'
+        options[:field_negative] = 'grid_power_plus'
+      else
+        options[:field_positive] = 'grid_power_plus'
+        options[:field_negative] = 'grid_power_minus'
+      end
+      options[:measurement_positive] = options[:measurement_negative] = env.fetch('INFLUX_MEASUREMENT')
+    when 'MQTT_TOPIC_BAT_POWER'
+      if env['MQTT_FLIP_BAT_POWER'] == 'true'
+        options[:field_positive] = 'bat_power_minus'
+        options[:field_negative] = 'bat_power_plus'
+      else
+        options[:field_positive] = 'bat_power_plus'
+        options[:field_negative] = 'bat_power_minus'
+      end
+      options[:measurement_positive] = options[:measurement_negative] = env.fetch('INFLUX_MEASUREMENT')
+    else
+      options[:field] = field_and_type[0]
+      options[:measurement] = env.fetch('INFLUX_MEASUREMENT')
+    end
+
+    options[:type] = field_and_type[1]
+    options
+  end
+
+  def deprecation_warning(var, index, options)
+    case var
+    when 'MQTT_TOPIC_GRID_POW', 'MQTT_TOPIC_BAT_POWER'
+      flip_var = var == 'MQTT_TOPIC_GRID_POW' ? 'MQTT_FLIP_GRID_POW' : 'MQTT_FLIP_BAT_POWER'
+
+      logger.warn "Variables #{var} and #{flip_var} are deprecated. " \
+                  'To remove this warning, please replace the variables by:'
+      logger.warn "  MAPPING_#{index}_TOPIC=#{options[:topic]}"
+      logger.warn "  MAPPING_#{index}_FIELD_POSITIVE=#{options[:field_positive]}"
+      logger.warn "  MAPPING_#{index}_FIELD_NEGATIVE=#{options[:field_negative]}"
+      logger.warn "  MAPPING_#{index}_MEASUREMENT_POSITIVE=#{options[:measurement_positive]}"
+      logger.warn "  MAPPING_#{index}_MEASUREMENT_NEGATIVE=#{options[:measurement_negative]}"
+    else
+      logger.warn "Variable #{var} is deprecated. To remove this warning, please replace the variable by:"
+      logger.warn "  MAPPING_#{index}_TOPIC=#{options[:topic]}"
+      logger.warn "  MAPPING_#{index}_FIELD=#{options[:field]}"
+      logger.warn "  MAPPING_#{index}_MEASUREMENT=#{options[:measurement]}"
+    end
+    logger.warn "  MAPPING_#{index}_TYPE=#{options[:type]}"
+    logger.warn ''
+  end
+
+  def validate_url!(url)
+    URI.parse(url)
+  end
+
+  def validate_mappings!
+    mappings.each do |value|
+      # Ensure all required keys are present
+      unless (value.keys & %i[topic measurement field type]).size == 4 ||
+             (value.keys & %i[topic measurement_positive measurement_negative field_positive field_negative type]).size == 6
+        raise ArgumentError, "Missing required keys: #{value.keys}"
+      end
+
+      # Ensure type is valid
+      raise ArgumentError, "Invalid type: #{value[:type]}" unless MAPPING_TYPES.include?(value[:type])
+    end
+  end
+end

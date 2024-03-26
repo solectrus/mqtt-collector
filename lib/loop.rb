@@ -26,6 +26,8 @@ class Loop
     # Maybe use this gem: https://github.com/kamui/retriable
 
     retry if max_count.nil?
+  rescue SystemExit, Interrupt
+    logger.warn 'Exiting...'
   end
 
   def stop
@@ -36,15 +38,17 @@ class Loop
 
   def subscribe_topics
     # Subscribe to all topics
-    mapper.topics.each { |topic| mqtt_client.subscribe(topic) }
+    mapper.topics.each do |topic|
+      mqtt_client.subscribe(topic)
+    end
   end
 
   def receive_messages
     # (Mostly) endless loop to receive messages
     count = 0
     loop do
-      time, fields = next_message
-      influx_push.call(fields, time: time.to_i)
+      time, records = next_message
+      influx_push.call(records, time: time.to_i)
 
       count += 1
       break if max_count && count >= max_count
@@ -57,10 +61,10 @@ class Loop
     # There is no timestamp in the MQTT message, so we use the current time
     time = Time.now
 
-    fields = mapper.call(topic, message)
-    logger.info "#{time} topic=#{topic} message=#{message} => #{fields}"
+    records = mapper.records_for(topic, message)
+    logger.info "#{time} topic=#{topic} message=#{message}"
 
-    [time, fields]
+    [time, records]
   end
 
   def influx_push
@@ -79,7 +83,7 @@ class Loop
       username: config.mqtt_username,
       password: config.mqtt_password,
       client_id: "mqtt-collector-#{SecureRandom.hex(4)}",
-    }
+    }.compact
   end
 
   def mapper

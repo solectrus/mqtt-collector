@@ -5,7 +5,9 @@
 
 # MQTT collector
 
-Collect data from MQTT broker and push it to InfluxDB 2 for use with SOLECTRUS.
+Collect data from MQTT broker and push it to InfluxDB 2. The mappings of MQTT topics to InfluxDB fields and measurements is customizable.
+
+The main use case is to collect data for SOLECTRUS, but it can be used for other purposes as well, where you want to collect data from MQTT and store it in InfluxDB.
 
 It has been tested in the following setups:
 
@@ -32,7 +34,7 @@ Note: For a SENEC device there is a dedicated [senec-collector](https://github.c
    docker compose up
    ```
 
-The Docker image support multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
+The Docker image supports multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
 
 ## Development
 
@@ -54,14 +56,6 @@ bundle exec rake
 
 ```bash
 bundle exec rubocop
-```
-
-### Build Docker image by yourself
-
-Example for Raspberry Pi:
-
-```bash
-docker buildx build --platform linux/arm64 -t mqtt-collector .
 ```
 
 ## License

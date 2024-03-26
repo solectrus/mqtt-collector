@@ -7,7 +7,6 @@ GEM
     ast (2.4.2)
     base64 (0.2.0)
     bigdecimal (3.1.7)
-    climate_control (1.2.0)
     coderay (1.1.3)
     crack (1.0.0)
       bigdecimal
@@ -126,7 +125,6 @@ PLATFORMS
 DEPENDENCIES
   amazing_print
   base64
-  climate_control
   csv
   dotenv
   guard-rspec
