@@ -123,5 +123,8 @@ class MQTT::FakeServer
   rescue MQTT::ProtocolException => e
     logger.warn "Protocol error, closing connection: #{e}"
     client.close
+  rescue Errno::EPIPE, Errno::ECONNRESET
+    logger.warn "Error, closing connection: #{e}"
+    client.close
   end
 end

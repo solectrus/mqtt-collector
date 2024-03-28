@@ -7,11 +7,9 @@ class FluxWriter
 
   attr_reader :config
 
-  def push(record, time:)
-    return unless record
-
+  def push(records, time:)
     write_api.write(
-      data: point(record, time:),
+      data: points(records, time:),
       bucket: config.influx_bucket,
       org: config.influx_org,
     )
@@ -19,16 +17,14 @@ class FluxWriter
 
   private
 
-  def point(record, time:)
-    InfluxDB2::Point.new(
-      name: influx_measurement,
-      time:,
-      fields: record.to_hash,
-    )
-  end
-
-  def influx_measurement
-    config.influx_measurement
+  def points(records, time:)
+    records.map do |record|
+      InfluxDB2::Point.new(
+        time:,
+        name: record[:measurement],
+        fields: { record[:field] => record[:value] },
+      )
+    end
   end
 
   def influx_client
