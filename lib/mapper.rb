@@ -107,15 +107,25 @@ class Mapper
     vars = formula.scan(/{(.*?)}/).flatten
 
     # Set values for variables from JSON
-    values = vars.reduce({}) { |hash, var| hash.merge(var => json[var]) }
+    values =
+      vars.reduce({}) do |hash, var|
+        hash.merge(normalized_var(var) => json[var])
+      end
 
-    # Remove curly braces from formula
-    raw_formula = formula.tr('{', '').tr('}', '')
+    # Replace variables in formula with normalized names
+    raw_formula =
+      vars.reduce(formula.clone) do |current_formula, var|
+        current_formula.gsub("{#{var}}", normalized_var(var))
+      end
 
     # Evaluate formula
     calculator = Dentaku::Calculator.new
-    calculator.store(values)
-    calculator.evaluate(raw_formula)
+    calculator.evaluate(raw_formula, values)
+  end
+
+  def normalized_var(variable)
+    # Remove all non-alphanumeric characters and replace by underscore
+    variable.tr('{', '').tr('}', '').gsub(/[^0-9a-z]/i, '_')
   end
 
   def parse_json(message)
