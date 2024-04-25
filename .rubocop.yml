@@ -41,6 +41,9 @@ Metrics/BlockLength:
 Metrics/CyclomaticComplexity:
   Max: 10
 
+Metrics/PerceivedComplexity:
+  Max: 10
+
 # Style
 
 Style/Documentation:

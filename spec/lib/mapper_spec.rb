@@ -111,10 +111,23 @@ VALID_ENV = {
   'MAPPING_17_TYPE' => 'float',
   #
   'MAPPING_18_TOPIC' => 'somewhere/ATTR',
-  'MAPPING_18_JSON_KEY' => 'water_flow',
+  'MAPPING_18_JSON_KEY' => 'inlet_temp',
   'MAPPING_18_MEASUREMENT' => 'HEATPUMP',
-  'MAPPING_18_FIELD' => 'water_flow',
+  'MAPPING_18_FIELD' => 'inlet_temp',
   'MAPPING_18_TYPE' => 'float',
+  #
+  'MAPPING_19_TOPIC' => 'somewhere/ATTR',
+  'MAPPING_19_JSON_KEY' => 'water_flow',
+  'MAPPING_19_MEASUREMENT' => 'HEATPUMP',
+  'MAPPING_19_FIELD' => 'water_flow',
+  'MAPPING_19_TYPE' => 'float',
+  #
+  'MAPPING_20_TOPIC' => 'somewhere/ATTR',
+  'MAPPING_20_JSON_FORMULA' =>
+    'round({water_flow} * 60.0 * 1.163 * ({leaving_temp} - {inlet_temp}))',
+  'MAPPING_20_MEASUREMENT' => 'HEATPUMP',
+  'MAPPING_20_FIELD' => 'heat',
+  'MAPPING_20_TYPE' => 'float',
 }.freeze
 
 EXPECTED_TOPICS = %w[
@@ -169,7 +182,7 @@ describe Mapper do
 
   it 'formats mapping with multiple keys' do
     expect(mapper.formatted_mapping('somewhere/ATTR')).to eq(
-      'HEATPUMP:leaving_temp (float), HEATPUMP:water_flow (float)',
+      'HEATPUMP:leaving_temp (float), HEATPUMP:inlet_temp (float), HEATPUMP:water_flow (float), HEATPUMP:heat (float)',
     )
   end
 
@@ -345,17 +358,23 @@ describe Mapper do
     )
   end
 
-  it 'maps json' do
+  it 'maps json and calculates formula' do
     hash =
       mapper.records_for(
         'somewhere/ATTR',
-        '{"leaving_temp": 35.2, "water_flow": 123.45}',
+        '{"leaving_temp": 35.2, "inlet_temp": 20.5, "water_flow": 123.45}',
       )
 
     expect(hash).to eq(
       [
         { measurement: 'HEATPUMP', field: 'leaving_temp', value: 35.2 },
+        { measurement: 'HEATPUMP', field: 'inlet_temp', value: 20.5 },
         { measurement: 'HEATPUMP', field: 'water_flow', value: 123.45 },
+        {
+          measurement: 'HEATPUMP',
+          field: 'heat',
+          value: (123.45 * 60 * 1.163 * (35.2 - 20.5)).round,
+        },
       ],
     )
   end

@@ -62,8 +62,10 @@ class Mapper
   def value_from(message, mapping)
     if mapping[:json_key]
       message = extract_from_json(message, mapping)
-      return if message.nil?
+    elsif mapping[:json_formula]
+      message = evaluate_from_json(message, mapping)
     end
+    return if message.nil?
 
     case mapping[:type]
     when 'float'
@@ -90,13 +92,37 @@ class Mapper
   def extract_from_json(message, mapping)
     raise "Message is not a string: #{message}" unless message.is_a? String
 
-    begin
-      json = JSON.parse(message)
-      message = json[mapping[:json_key]]
-    rescue JSON::ParserError
-      config.logger.warn "Failed to parse JSON: #{message}"
-      nil
-    end
+    json = parse_json(message)
+    return unless json
+
+    json[mapping[:json_key]]
+  end
+
+  def evaluate_from_json(message, mapping)
+    json = parse_json(message)
+    return unless json
+
+    # Extract variables from formula
+    formula = mapping[:json_formula]
+    vars = formula.scan(/{(.*?)}/).flatten
+
+    # Set values for variables from JSON
+    values = vars.reduce({}) { |hash, var| hash.merge(var => json[var]) }
+
+    # Remove curly braces from formula
+    raw_formula = formula.tr('{', '').tr('}', '')
+
+    # Evaluate formula
+    calculator = Dentaku::Calculator.new
+    calculator.store(values)
+    calculator.evaluate(raw_formula)
+  end
+
+  def parse_json(message)
+    JSON.parse(message)
+  rescue JSON::ParserError
+    config.logger.warn "Failed to parse JSON: #{message}"
+    nil
   end
 
   def map_with_sign(mapping, value)

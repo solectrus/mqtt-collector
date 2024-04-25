@@ -8,10 +8,13 @@ GEM
     base64 (0.2.0)
     bigdecimal (3.1.7)
     coderay (1.1.3)
+    concurrent-ruby (1.2.3)
     crack (1.0.0)
       bigdecimal
       rexml
     csv (3.3.0)
+    dentaku (3.5.2)
+      concurrent-ruby
     diff-lcs (1.5.1)
     docile (1.4.0)
     dotenv (3.1.0)
@@ -126,6 +129,7 @@ DEPENDENCIES
   amazing_print
   base64
   csv
+  dentaku
   dotenv
   guard-rspec
   influxdb-client

@@ -15,6 +15,9 @@ gem 'csv'
 # Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
 gem 'base64'
 
+# A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
+gem 'dentaku'
+
 group :development do
   # Guard gem for RSpec (https://github.com/guard/guard-rspec)
   gem 'guard-rspec', require: false
