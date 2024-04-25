@@ -84,25 +84,37 @@ VALID_ENV = {
   'MAPPING_12_FIELD' => 'system_status',
   'MAPPING_12_TYPE' => 'string',
   #
-  'MAPPING_13_FIELD' => 'mpp1_power',
-  'MAPPING_13_MEASUREMENT' => 'PV',
   'MAPPING_13_TOPIC' => 'senec/0/PV1/MPP_POWER/0',
+  'MAPPING_13_MEASUREMENT' => 'PV',
+  'MAPPING_13_FIELD' => 'mpp1_power',
   'MAPPING_13_TYPE' => 'integer',
   #
-  'MAPPING_14_FIELD' => 'mpp2_power',
-  'MAPPING_14_MEASUREMENT' => 'PV',
   'MAPPING_14_TOPIC' => 'senec/0/PV1/MPP_POWER/1',
+  'MAPPING_14_MEASUREMENT' => 'PV',
+  'MAPPING_14_FIELD' => 'mpp2_power',
   'MAPPING_14_TYPE' => 'integer',
   #
-  'MAPPING_15_FIELD' => 'mpp3_power',
-  'MAPPING_15_MEASUREMENT' => 'PV',
   'MAPPING_15_TOPIC' => 'senec/0/PV1/MPP_POWER/2',
+  'MAPPING_15_MEASUREMENT' => 'PV',
+  'MAPPING_15_FIELD' => 'mpp3_power',
   'MAPPING_15_TYPE' => 'integer',
   #
-  'MAPPING_16_FIELD' => 'system_status_ok',
-  'MAPPING_16_MEASUREMENT' => 'PV',
   'MAPPING_16_TOPIC' => 'somewhere/STAT_STATE_OK',
+  'MAPPING_16_MEASUREMENT' => 'PV',
+  'MAPPING_16_FIELD' => 'system_status_ok',
   'MAPPING_16_TYPE' => 'boolean',
+  #
+  'MAPPING_17_TOPIC' => 'somewhere/ATTR',
+  'MAPPING_17_JSON_KEY' => 'leaving_temp',
+  'MAPPING_17_MEASUREMENT' => 'HEATPUMP',
+  'MAPPING_17_FIELD' => 'leaving_temp',
+  'MAPPING_17_TYPE' => 'float',
+  #
+  'MAPPING_18_TOPIC' => 'somewhere/ATTR',
+  'MAPPING_18_JSON_KEY' => 'water_flow',
+  'MAPPING_18_MEASUREMENT' => 'HEATPUMP',
+  'MAPPING_18_FIELD' => 'water_flow',
+  'MAPPING_18_TYPE' => 'float',
 }.freeze
 
 EXPECTED_TOPICS = %w[
@@ -121,6 +133,7 @@ EXPECTED_TOPICS = %w[
   senec/0/WALLBOX/APPARENT_CHARGING_POWER/1
   senec/0/WALLBOX/APPARENT_CHARGING_POWER/2
   senec/0/WALLBOX/APPARENT_CHARGING_POWER/3
+  somewhere/ATTR
   somewhere/HEATPUMP/POWER
   somewhere/STAT_STATE_OK
 ].freeze
@@ -146,9 +159,17 @@ describe Mapper do
     expect(
       mapper.formatted_mapping('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE'),
     ).to eq('PV:battery_soc (float)')
+  end
 
+  it 'formats mapping with sign' do
     expect(mapper.formatted_mapping('senec/0/ENERGY/GUI_GRID_POW')).to eq(
       'PV:grid_import_power (+) PV:grid_export_power (-) (integer)',
+    )
+  end
+
+  it 'formats mapping with multiple keys' do
+    expect(mapper.formatted_mapping('somewhere/ATTR')).to eq(
+      'HEATPUMP:leaving_temp (float), HEATPUMP:water_flow (float)',
     )
   end
 
@@ -324,16 +345,33 @@ describe Mapper do
     )
   end
 
+  it 'maps json' do
+    hash =
+      mapper.records_for(
+        'somewhere/ATTR',
+        '{"leaving_temp": 35.2, "water_flow": 123.45}',
+      )
+
+    expect(hash).to eq(
+      [
+        { measurement: 'HEATPUMP', field: 'leaving_temp', value: 35.2 },
+        { measurement: 'HEATPUMP', field: 'water_flow', value: 123.45 },
+      ],
+    )
+  end
+
+  it 'handles invalid JSON' do
+    hash = mapper.records_for('somewhere/ATTR', 'this is not JSON')
+
+    expect(hash).to eq([])
+  end
+
   it 'handles invalid value types' do
     hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', {})
-    expect(hash).to eq(
-      [{ field: 'inverter_power', measurement: 'PV', value: nil }],
-    )
+    expect(hash).to eq([])
 
-    hash = mapper.records_for('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE', {})
-    expect(hash).to eq(
-      [{ field: 'battery_soc', measurement: 'PV', value: nil }],
-    )
+    hash = mapper.records_for('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE', :foo)
+    expect(hash).to eq([])
   end
 
   it 'raises on unknown topic' do

@@ -6,36 +6,43 @@ class Mapper
   attr_reader :config
 
   def topics
-    @topics ||= config.mappings.map { |mapping| mapping[:topic] }.sort
+    @topics ||= config.mappings.map { |mapping| mapping[:topic] }.sort.uniq
   end
 
   def formatted_mapping(topic)
-    mapping = mapping_for(topic)
+    mappings_for(topic)
+      .map do |mapping|
+        result =
+          if signed?(mapping)
+            "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+              "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+          else
+            "#{mapping[:measurement]}:#{mapping[:field]}"
+          end
 
-    result =
-      if signed?(mapping)
-        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-      else
-        "#{mapping[:measurement]}:#{mapping[:field]}"
+        result += " (#{mapping[:type]})"
+        result
       end
-
-    result += " (#{mapping[:type]})"
-    result
+      .join(', ')
   end
 
   def records_for(topic, message)
     return [] if message == ''
 
-    mapping = mapping_for(topic)
-    raise "Unknown mapping for topic: #{topic}" unless mapping
+    mappings = mappings_for(topic)
+    raise "Unknown mapping for topic: #{topic}" if mappings.empty?
 
-    value = value_from(message, mapping)
-    if signed?(mapping)
-      map_with_sign(mapping, value)
-    else
-      map_default(mapping, value)
-    end
+    mappings
+      .map do |mapping|
+        value = value_from(message, mapping)
+        if signed?(mapping)
+          map_with_sign(mapping, value)
+        else
+          map_default(mapping, value)
+        end
+      end
+      .flatten
+      .delete_if { |record| record[:value].nil? }
   end
 
   private
@@ -53,6 +60,11 @@ class Mapper
   end
 
   def value_from(message, mapping)
+    if mapping[:json_key]
+      message = extract_from_json(message, mapping)
+      return if message.nil?
+    end
+
     case mapping[:type]
     when 'float'
       begin
@@ -75,6 +87,18 @@ class Mapper
     end
   end
 
+  def extract_from_json(message, mapping)
+    raise "Message is not a string: #{message}" unless message.is_a? String
+
+    begin
+      json = JSON.parse(message)
+      message = json[mapping[:json_key]]
+    rescue JSON::ParserError
+      config.logger.warn "Failed to parse JSON: #{message}"
+      nil
+    end
+  end
+
   def map_with_sign(mapping, value)
     [
       {
@@ -94,7 +118,7 @@ class Mapper
     [{ measurement: mapping[:measurement], field: mapping[:field], value: }]
   end
 
-  def mapping_for(topic)
-    config.mappings.find { |mapping| mapping[:topic] == topic }
+  def mappings_for(topic)
+    config.mappings.select { |mapping| mapping[:topic] == topic }
   end
 end
