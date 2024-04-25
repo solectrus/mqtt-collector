@@ -18,6 +18,12 @@ Layout/LineLength:
 Layout/LineEndStringConcatenationIndentation:
   Enabled: false
 
+Layout/MultilineOperationIndentation:
+  Enabled: false
+
+Layout/EmptyComment:
+  Enabled: false
+
 # Metrics
 
 Metrics/AbcSize:
@@ -31,6 +37,9 @@ Metrics/MethodLength:
 
 Metrics/BlockLength:
   Max: 30
+
+Metrics/CyclomaticComplexity:
+  Max: 10
 
 # Style
 
@@ -48,6 +57,15 @@ Style/TrailingCommaInArrayLiteral:
 
 Style/TrailingCommaInHashLiteral:
   EnforcedStyleForMultiline: consistent_comma
+
+Style/IfUnlessModifier:
+  Enabled: false
+
+Style/MultilineBlockChain:
+  Enabled: false
+
+Style/EmptyMethod:
+  Enabled: false
 
 # RSpec
 

@@ -74,26 +74,16 @@ describe Config, '#mapping' do
 
   context 'with invalid mapping env' do
     [
-      {
-        MAPPING_0_TOPIC: 'topic',
-      },
-      {
-        MAPPING_0_TOPIC: 'topic',
-        MAPPING_0_FIELD: 'field',
-      },
-      {
-        MAPPING_0_TOPIC: 'topic',
-        MAPPING_0_MEASUREMENT: 'measurement',
-      },
+      { MAPPING_0_TOPIC: 'topic' },
+      { MAPPING_0_TOPIC: 'topic', MAPPING_0_FIELD: 'field' },
+      { MAPPING_0_TOPIC: 'topic', MAPPING_0_MEASUREMENT: 'measurement' },
       {
         MAPPING_0_TOPIC: 'topic',
         MAPPING_0_MEASUREMENT: 'measurement',
         MAPPING_1_FIELD: 'field',
       },
     ].each do |hash|
-      let(:env) do
-        other_env.merge(hash)
-      end
+      let(:env) { other_env.merge(hash) }
 
       it 'raises an error' do
         expect { config }.to raise_error(ArgumentError)

@@ -22,7 +22,9 @@ class FluxWriter
       InfluxDB2::Point.new(
         time:,
         name: record[:measurement],
-        fields: { record[:field] => record[:value] },
+        fields: {
+          record[:field] => record[:value],
+        },
       )
     end
   end

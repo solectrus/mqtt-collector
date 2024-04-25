@@ -6,10 +6,7 @@ describe Loop do
 
   let(:config) do
     Config.new(
-      ENV.to_h.merge(
-        'MQTT_HOST' => server.address,
-        'MQTT_PORT' => server.port,
-      ),
+      ENV.to_h.merge('MQTT_HOST' => server.address, 'MQTT_PORT' => server.port),
       logger:,
     )
   end

@@ -81,15 +81,16 @@ class Config
   def mappings_from(env)
     mapping_vars = env.select { |key, _| key.match?(MAPPING_REGEX) }
 
-    mapping_groups = mapping_vars.group_by do |key, _|
-      key.match(MAPPING_REGEX)[1].to_i
-    end
+    mapping_groups =
+      mapping_vars.group_by { |key, _| key.match(MAPPING_REGEX)[1].to_i }
 
-    mapping_groups.transform_values do |values|
-      values.to_h.transform_keys do |key|
-        key.match(MAPPING_REGEX)[2].downcase.to_sym
+    mapping_groups
+      .transform_values do |values|
+        values.to_h.transform_keys do |key|
+          key.match(MAPPING_REGEX)[2].downcase.to_sym
+        end
       end
-    end.values
+      .values
   end
 
   def deprecated_mappings_from(env)
@@ -117,7 +118,9 @@ class Config
         options[:field_positive] = 'grid_power_plus'
         options[:field_negative] = 'grid_power_minus'
       end
-      options[:measurement_positive] = options[:measurement_negative] = env.fetch('INFLUX_MEASUREMENT')
+      options[:measurement_positive] = options[
+        :measurement_negative
+      ] = env.fetch('INFLUX_MEASUREMENT')
     when 'MQTT_TOPIC_BAT_POWER'
       if env['MQTT_FLIP_BAT_POWER'] == 'true'
         options[:field_positive] = 'bat_power_minus'
@@ -126,7 +129,9 @@ class Config
         options[:field_positive] = 'bat_power_plus'
         options[:field_negative] = 'bat_power_minus'
       end
-      options[:measurement_positive] = options[:measurement_negative] = env.fetch('INFLUX_MEASUREMENT')
+      options[:measurement_positive] = options[
+        :measurement_negative
+      ] = env.fetch('INFLUX_MEASUREMENT')
     else
       options[:field] = field_and_type[0]
       options[:measurement] = env.fetch('INFLUX_MEASUREMENT')
@@ -139,10 +144,17 @@ class Config
   def deprecation_warning(var, index, options)
     case var
     when 'MQTT_TOPIC_GRID_POW', 'MQTT_TOPIC_BAT_POWER'
-      flip_var = var == 'MQTT_TOPIC_GRID_POW' ? 'MQTT_FLIP_GRID_POW' : 'MQTT_FLIP_BAT_POWER'
+      flip_var =
+        (
+          if var == 'MQTT_TOPIC_GRID_POW'
+            'MQTT_FLIP_GRID_POW'
+          else
+            'MQTT_FLIP_BAT_POWER'
+          end
+        )
 
       logger.warn "Variables #{var} and #{flip_var} are deprecated. " \
-                  'To remove this warning, please replace the variables by:'
+                    'To remove this warning, please replace the variables by:'
       logger.warn "  MAPPING_#{index}_TOPIC=#{options[:topic]}"
       logger.warn "  MAPPING_#{index}_FIELD_POSITIVE=#{options[:field_positive]}"
       logger.warn "  MAPPING_#{index}_FIELD_NEGATIVE=#{options[:field_negative]}"
@@ -166,12 +178,24 @@ class Config
     mappings.each do |value|
       # Ensure all required keys are present
       unless (value.keys & %i[topic measurement field type]).size == 4 ||
-             (value.keys & %i[topic measurement_positive measurement_negative field_positive field_negative type]).size == 6
+               (
+                 value.keys &
+                   %i[
+                     topic
+                     measurement_positive
+                     measurement_negative
+                     field_positive
+                     field_negative
+                     type
+                   ]
+               ).size == 6
         raise ArgumentError, "Missing required keys: #{value.keys}"
       end
 
       # Ensure type is valid
-      raise ArgumentError, "Invalid type: #{value[:type]}" unless MAPPING_TYPES.include?(value[:type])
+      unless MAPPING_TYPES.include?(value[:type])
+        raise ArgumentError, "Invalid type: #{value[:type]}"
+      end
     end
   end
 end

@@ -12,12 +12,13 @@ class Mapper
   def formatted_mapping(topic)
     mapping = mapping_for(topic)
 
-    result = if signed?(mapping)
-               "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-               "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-             else
-               "#{mapping[:measurement]}:#{mapping[:field]}"
-             end
+    result =
+      if signed?(mapping)
+        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+      else
+        "#{mapping[:measurement]}:#{mapping[:field]}"
+      end
 
     result += " (#{mapping[:type]})"
     result
@@ -40,7 +41,15 @@ class Mapper
   private
 
   def signed?(mapping)
-    (mapping.keys & %i[field_positive field_negative measurement_positive measurement_negative]).size == 4
+    (
+      mapping.keys &
+        %i[
+          field_positive
+          field_negative
+          measurement_positive
+          measurement_negative
+        ]
+    ).size == 4
   end
 
   def value_from(message, mapping)
@@ -82,13 +91,7 @@ class Mapper
   end
 
   def map_default(mapping, value)
-    [
-      {
-        measurement: mapping[:measurement],
-        field: mapping[:field],
-        value:,
-      },
-    ]
+    [{ measurement: mapping[:measurement], field: mapping[:field], value: }]
   end
 
   def mapping_for(topic)

@@ -4,9 +4,7 @@ require 'config'
 describe InfluxPush do
   subject(:influx_push) { described_class.new(config:) }
 
-  let(:config) do
-    Config.new(ENV, logger: MemoryLogger.new)
-  end
+  let(:config) { Config.new(ENV, logger: MemoryLogger.new) }
 
   it 'initializes with a config' do
     expect(influx_push.config).to eq(config)

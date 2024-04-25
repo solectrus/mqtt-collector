@@ -38,9 +38,7 @@ class Loop
 
   def subscribe_topics
     # Subscribe to all topics
-    mapper.topics.each do |topic|
-      mqtt_client.subscribe(topic)
-    end
+    mapper.topics.each { |topic| mqtt_client.subscribe(topic) }
   end
 
   def receive_messages
