@@ -467,5 +467,13 @@ describe Config do
         expect { described_class.new(env) }.to raise_error(Exception)
       end
     end
+
+    context 'when mapping type is invalid' do
+      let(:env) { valid_env.merge('MAPPING_0_TYPE' => 'this-is-no-type') }
+
+      it 'raises an exception' do
+        expect { described_class.new(env) }.to raise_error(Exception)
+      end
+    end
   end
 end
