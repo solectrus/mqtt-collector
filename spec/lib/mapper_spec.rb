@@ -123,14 +123,27 @@ VALID_ENV = {
   'MAPPING_19_TYPE' => 'float',
   #
   'MAPPING_20_TOPIC' => 'somewhere/ATTR',
-  'MAPPING_20_JSON_FORMULA' =>
-    'round({water_flow} * 60.0 * 1.163 * ({leaving_temp} - {inlet_temp}))',
+  'MAPPING_20_JSON_FORMULA' => '{$.leaving_temp} - {$.inlet_temp}',
   'MAPPING_20_MEASUREMENT' => 'HEATPUMP',
-  'MAPPING_20_FIELD' => 'heat',
+  'MAPPING_20_FIELD' => 'temp_diff',
   'MAPPING_20_TYPE' => 'float',
+  #
+  'MAPPING_21_TOPIC' => 'somewhere/ATTR',
+  'MAPPING_21_JSON_FORMULA' =>
+    'round({water_flow} * 60.0 * 1.163 * ({leaving_temp} - {inlet_temp}))',
+  'MAPPING_21_MEASUREMENT' => 'HEATPUMP',
+  'MAPPING_21_FIELD' => 'heat',
+  'MAPPING_21_TYPE' => 'float',
+  #
+  'MAPPING_22_TOPIC' => 'go-e/ATTR',
+  'MAPPING_22_JSON_PATH' => '$.ccp[6]',
+  'MAPPING_22_MEASUREMENT' => 'WALLBOX',
+  'MAPPING_22_FIELD' => 'power',
+  'MAPPING_22_TYPE' => 'float',
 }.freeze
 
 EXPECTED_TOPICS = %w[
+  go-e/ATTR
   senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE
   senec/0/ENERGY/GUI_BAT_DATA_POWER
   senec/0/ENERGY/GUI_GRID_POW
@@ -172,6 +185,10 @@ describe Mapper do
     expect(
       mapper.formatted_mapping('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE'),
     ).to eq('PV:battery_soc (float)')
+
+    expect(
+      mapper.formatted_mapping('go-e/ATTR'),
+    ).to eq('WALLBOX:power (float)')
   end
 
   it 'formats mapping with sign' do
@@ -182,7 +199,11 @@ describe Mapper do
 
   it 'formats mapping with multiple keys' do
     expect(mapper.formatted_mapping('somewhere/ATTR')).to eq(
-      'HEATPUMP:leaving_temp (float), HEATPUMP:inlet_temp (float), HEATPUMP:water_flow (float), HEATPUMP:heat (float)',
+      'HEATPUMP:leaving_temp (float), ' \
+      'HEATPUMP:inlet_temp (float), ' \
+      'HEATPUMP:water_flow (float), ' \
+      'HEATPUMP:temp_diff (float), ' \
+      'HEATPUMP:heat (float)',
     )
   end
 
@@ -358,23 +379,29 @@ describe Mapper do
     )
   end
 
+  it 'maps with JSON_PATH' do
+    hash = mapper.records_for(
+      'go-e/ATTR',
+      '{"ccp": [103.5098,-9787.971,null,null,10072.18,-180.701,3.295279,100.2145,null,null,null,null,null,null,null,null]}',
+    )
+
+    expect(hash).to eq([{ field: 'power', measurement: 'WALLBOX', value: 3.295279 }])
+  end
+
   it 'maps json and calculates formula' do
     hash =
       mapper.records_for(
         'somewhere/ATTR',
-        '{"leaving_temp": 35.2, "inlet_temp": 20.5, "water_flow": 123.45}',
+        '{"leaving_temp": 35.2, "inlet_temp": 20.5, "water_flow": 16.45}',
       )
 
     expect(hash).to eq(
       [
         { measurement: 'HEATPUMP', field: 'leaving_temp', value: 35.2 },
-        { measurement: 'HEATPUMP', field: 'inlet_temp', value: 20.5 },
-        { measurement: 'HEATPUMP', field: 'water_flow', value: 123.45 },
-        {
-          measurement: 'HEATPUMP',
-          field: 'heat',
-          value: (123.45 * 60 * 1.163 * (35.2 - 20.5)).round,
-        },
+        { measurement: 'HEATPUMP', field: 'inlet_temp',   value: 20.5 },
+        { measurement: 'HEATPUMP', field: 'water_flow',   value: 16.45 },
+        { measurement: 'HEATPUMP', field: 'temp_diff',    value: 14.7 },   # 35.2 - 20.5
+        { measurement: 'HEATPUMP', field: 'heat',         value: 16_874 }, # (16.45 * 60 * 1.163 * (20.5 - 35.2)).round
       ],
     )
   end

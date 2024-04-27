@@ -60,13 +60,16 @@ class Mapper
   end
 
   def value_from(message, mapping)
-    if mapping[:json_key]
+    if mapping[:json_key] || mapping[:json_path]
       message = extract_from_json(message, mapping)
     elsif mapping[:json_formula]
       message = evaluate_from_json(message, mapping)
     end
-    return if message.nil?
 
+    convert_type(message, mapping) if message
+  end
+
+  def convert_type(message, mapping)
     case mapping[:type]
     when 'float'
       begin
@@ -95,7 +98,11 @@ class Mapper
     json = parse_json(message)
     return unless json
 
-    json[mapping[:json_key]]
+    if mapping[:json_path]
+      JsonPath.new(mapping[:json_path]).first(json)
+    elsif mapping[:json_key]
+      json[mapping[:json_key]]
+    end
   end
 
   def evaluate_from_json(message, mapping)
@@ -109,7 +116,15 @@ class Mapper
     # Set values for variables from JSON
     values =
       vars.reduce({}) do |hash, var|
-        hash.merge(normalized_var(var) => json[var])
+        value = if var.start_with?('$.')
+                  # Looks like a JSON path
+                  JsonPath.new(var).first(json)
+                else
+                  # Seems to be a simple key
+                  json[var]
+                end
+
+        hash.merge(normalized_var(var) => value)
       end
 
     # Replace variables in formula with normalized names

@@ -18,6 +18,9 @@ gem 'base64'
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 
+# Ruby implementation of http://goessner.net/articles/JsonPath/ (https://github.com/joshbuddy/jsonpath)
+gem 'jsonpath'
+
 group :development do
   # Guard gem for RSpec (https://github.com/guard/guard-rspec)
   gem 'guard-rspec', require: false
