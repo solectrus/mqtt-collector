@@ -28,7 +28,8 @@ describe Loop do
       it 'handles payload', vcr: 'influx_success' do
         loop.start
 
-        expect(logger.info_messages).to include(/message=80.0/)
+        expect(logger.info_messages).to include(/message = 80.0/)
+        expect(logger.info_messages).to include(/PV:battery_soc = 80.0/)
         expect(logger.error_messages).to be_empty
 
         loop.stop

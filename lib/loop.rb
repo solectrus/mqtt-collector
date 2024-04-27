@@ -60,7 +60,16 @@ class Loop
     time = Time.now
 
     records = mapper.records_for(topic, message)
-    logger.info "#{time} topic=#{topic} message=#{message}"
+
+    # Log all the data we received
+    logger.info "# Message from #{time}"
+    logger.info "  topic = #{topic}"
+    logger.info "  message = #{message}"
+
+    # Log all the data we are going to push to InfluxDB
+    records.each do |record|
+      logger.info "  => #{record[:measurement]}:#{record[:field]} = #{record[:value]}"
+    end
 
     [time, records]
   end
