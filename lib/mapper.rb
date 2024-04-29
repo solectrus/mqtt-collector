@@ -86,7 +86,7 @@ class Mapper
         nil
       end
     when 'boolean'
-      %w[true TRUE ok OK yes YES 1].include?(message)
+      %w[true TRUE ok OK yes YES on ON 1].include?(message)
     when 'string'
       message.to_s
     end
