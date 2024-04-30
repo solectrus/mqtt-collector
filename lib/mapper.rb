@@ -1,3 +1,5 @@
+require 'evaluator'
+
 class Mapper
   def initialize(config:)
     @config = config
@@ -109,38 +111,7 @@ class Mapper
     json = parse_json(message)
     return unless json
 
-    # Extract variables from formula
-    formula = mapping[:json_formula]
-    vars = formula.scan(/{(.*?)}/).flatten
-
-    # Set values for variables from JSON
-    values =
-      vars.reduce({}) do |hash, var|
-        value = if var.start_with?('$.')
-                  # Looks like a JSON path
-                  JsonPath.new(var).first(json)
-                else
-                  # Seems to be a simple key
-                  json[var]
-                end
-
-        hash.merge(normalized_var(var) => value)
-      end
-
-    # Replace variables in formula with normalized names
-    raw_formula =
-      vars.reduce(formula.clone) do |current_formula, var|
-        current_formula.gsub("{#{var}}", normalized_var(var))
-      end
-
-    # Evaluate formula
-    calculator = Dentaku::Calculator.new
-    calculator.evaluate(raw_formula, values)
-  end
-
-  def normalized_var(variable)
-    # Remove all non-alphanumeric characters and replace by underscore
-    variable.tr('{', '').tr('}', '').gsub(/[^0-9a-z]/i, '_')
+    Evaluator.new(expression: mapping[:json_formula], data: json).run
   end
 
   def parse_json(message)
