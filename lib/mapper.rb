@@ -1,3 +1,5 @@
+require 'evaluator'
+
 class Mapper
   def initialize(config:)
     @config = config
@@ -6,127 +8,139 @@ class Mapper
   attr_reader :config
 
   def topics
-    topic_keys.filter_map { |key| config.send(:"mqtt_topic_#{key}") }.sort
+    @topics ||= config.mappings.map { |mapping| mapping[:topic] }.sort.uniq
   end
 
-  def call(topic, message)
-    method_name = topic_to_method(topic)
-    raise "Unknown topic: #{topic}" unless method_name
+  def formatted_mapping(topic)
+    mappings_for(topic)
+      .map do |mapping|
+        result =
+          if signed?(mapping)
+            "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+              "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+          else
+            "#{mapping[:measurement]}:#{mapping[:field]}"
+          end
 
-    send(method_name, message)
+        result += " (#{mapping[:type]})"
+        result
+      end
+      .join(', ')
+  end
+
+  def records_for(topic, message)
+    return [] if message == ''
+
+    mappings = mappings_for(topic)
+    raise "Unknown mapping for topic: #{topic}" if mappings.empty?
+
+    mappings
+      .map do |mapping|
+        value = value_from(message, mapping)
+        if signed?(mapping)
+          map_with_sign(mapping, value)
+        else
+          map_default(mapping, value)
+        end
+      end
+      .flatten
+      .delete_if { |record| record[:value].nil? }
   end
 
   private
 
-  def topic_keys
-    private_methods.grep(/^map_/).map { |m| m.to_s.sub('map_', '') }
+  def signed?(mapping)
+    (
+      mapping.keys &
+        %i[
+          field_positive
+          field_negative
+          measurement_positive
+          measurement_negative
+        ]
+    ).size == 4
   end
 
-  def topic_to_method(topic)
-    method =
-      topic_keys.find { |key| config.send(:"mqtt_topic_#{key}") == topic }
-    return unless method
+  def value_from(message, mapping)
+    if mapping[:json_key] || mapping[:json_path]
+      message = extract_from_json(message, mapping)
+    elsif mapping[:json_formula]
+      message = evaluate_from_json(message, mapping)
+    end
 
-    "map_#{method}"
+    convert_type(message, mapping) if message
   end
 
-  # To add a new mapping, add a new method here and a new config key in lib/config.rb
-  # The method name must be prefixed with `map_` and the config key must be prefixed with `mqtt_topic_`
-  # The method must return a hash with field name and value to be sent to InfluxDB
-
-  def map_inverter_power(value)
-    { 'inverter_power' => value.to_f.round }
-  end
-
-  def map_mpp1_power(value)
-    { 'mpp1_power' => value.to_f.round }
-  end
-
-  def map_mpp2_power(value)
-    { 'mpp2_power' => value.to_f.round }
-  end
-
-  def map_mpp3_power(value)
-    { 'mpp3_power' => value.to_f.round }
-  end
-
-  def map_house_pow(value)
-    { 'house_power' => value.to_f.round }
-  end
-
-  def map_bat_fuel_charge(value)
-    { 'bat_fuel_charge' => value.to_f.round(1) }
-  end
-
-  ##################
-  def map_wallbox_charge_power(value)
-    { 'wallbox_charge_power' => value.to_f.round }
-  end
-  #
-  # TODO: Change this in the next major version.
-  # Summing up of 0..3 must be done in the SOLECTRUS dashboard
-  #
-  # def map_wallbox_charge_power0(value)
-  #   { 'wallbox_charge_power0' => value.to_f.round }
-  # end
-
-  def map_wallbox_charge_power1(value)
-    { 'wallbox_charge_power1' => value.to_f.round }
-  end
-
-  def map_wallbox_charge_power2(value)
-    { 'wallbox_charge_power2' => value.to_f.round }
-  end
-
-  def map_wallbox_charge_power3(value)
-    { 'wallbox_charge_power3' => value.to_f.round }
-  end
-
-  def map_bat_power(value)
-    value = value.to_f.round
-    value = -value if config.mqtt_flip_bat_power
-
-    if value.negative?
-      # From battery
-      { 'bat_power_plus' => 0, 'bat_power_minus' => -value }
-    else
-      # To battery
-      { 'bat_power_plus' => value, 'bat_power_minus' => 0 }
+  def convert_type(message, mapping)
+    case mapping[:type]
+    when 'float'
+      begin
+        message.to_f
+      rescue StandardError
+        config.logger.warn "Failed to convert #{message} to float"
+        nil
+      end
+    when 'integer'
+      begin
+        message.to_f.round
+      rescue StandardError
+        config.logger.warn "Failed to convert #{message} to integer"
+        nil
+      end
+    when 'boolean'
+      %w[true ok yes on 1].include?(message.to_s.downcase)
+    when 'string'
+      message.to_s
     end
   end
 
-  def map_grid_pow(value)
-    value = value.to_f.round
-    value = -value if config.mqtt_flip_grid_pow
+  def extract_from_json(message, mapping)
+    raise "Message is not a string: #{message}" unless message.is_a? String
 
-    if value.negative?
-      # To grid
-      { 'grid_power_plus' => 0, 'grid_power_minus' => -value }
-    else
-      # From grid
-      { 'grid_power_plus' => value, 'grid_power_minus' => 0 }
+    json = parse_json(message)
+    return unless json
+
+    if mapping[:json_path]
+      JsonPath.new(mapping[:json_path]).first(json)
+    elsif mapping[:json_key]
+      json[mapping[:json_key]]
     end
   end
 
-  def map_current_state(value)
-    value.sub!(/ \(\d+\)/, '')
+  def evaluate_from_json(message, mapping)
+    json = parse_json(message)
+    return unless json
 
-    { 'current_state' => value }
+    Evaluator.new(expression: mapping[:json_formula], data: json).run
   end
 
-  def map_current_state_ok(value)
-    { 'current_state_ok' => %w[true 1 OK].include?(value) }
+  def parse_json(message)
+    JSON.parse(message)
+  rescue JSON::ParserError
+    config.logger.warn "Failed to parse JSON: #{message}"
+    nil
   end
 
-  def map_case_temp(value)
-    { 'case_temp' => value.to_f.round(1) }
+  def map_with_sign(mapping, value)
+    [
+      {
+        measurement: mapping[:measurement_negative],
+        field: mapping[:field_negative],
+        value: value.negative? ? value.abs : 0,
+      },
+      {
+        measurement: mapping[:measurement_positive],
+        field: mapping[:field_positive],
+        value: value.positive? ? value : 0,
+      },
+    ]
   end
 
-  def map_power_ratio(value)
-    { 'power_ratio' => value.to_f.round }
+  def map_default(mapping, value)
+    [{ measurement: mapping[:measurement], field: mapping[:field], value: }]
   end
 
-  def map_heatpump_power(value)
-    { 'heatpump_power' => value.to_f.round }
+  def mappings_for(topic)
+    config.mappings.select { |mapping| mapping[:topic] == topic }
   end
 end

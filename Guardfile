@@ -17,13 +17,7 @@
 
 # Ignore unneeded folders to prevent high CPU load
 # https://stackoverflow.com/a/20543493/57950
-ignore(
-  [
-    %r{^coverage/*},
-    %r{^.vscode/*},
-    %r{^.github/*},
-  ],
-)
+ignore([%r{^coverage/*}, %r{^.vscode/*}, %r{^.github/*}])
 
 # NOTE: The cmd option is now required due to the increasing number of ways
 #       rspec may be run, below are examples of the most common uses.

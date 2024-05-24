@@ -15,6 +15,15 @@ gem 'csv'
 # Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
 gem 'base64'
 
+# A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
+gem 'dentaku'
+
+# Arbitrary-precision decimal floating-point number library. (https://github.com/ruby/bigdecimal)
+gem 'bigdecimal'
+
+# Ruby implementation of http://goessner.net/articles/JsonPath/ (https://github.com/joshbuddy/jsonpath)
+gem 'jsonpath'
+
 group :development do
   # Guard gem for RSpec (https://github.com/guard/guard-rspec)
   gem 'guard-rspec', require: false
@@ -47,9 +56,6 @@ group :development, :test do
 
   # Library for stubbing HTTP requests in Ruby. (https://github.com/bblimke/webmock)
   gem 'webmock'
-
-  # Modify your ENV easily with ClimateControl (https://github.com/thoughtbot/climate_control)
-  gem 'climate_control'
 
   # Code coverage for Ruby (https://github.com/simplecov-ruby/simplecov)
   gem 'simplecov'
