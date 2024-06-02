@@ -42,7 +42,7 @@ VALID_ENV = {
   'MAPPING_4_MEASUREMENT_NEGATIVE' => 'PV',
   'MAPPING_4_FIELD_POSITIVE' => 'battery_charging_power',
   'MAPPING_4_FIELD_NEGATIVE' => 'battery_discharging_power',
-  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_TYPE' => 'float',
   #
   'MAPPING_5_TOPIC' => 'senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE',
   'MAPPING_5_MEASUREMENT' => 'PV',
@@ -290,10 +290,12 @@ describe Mapper do
 
     expect(hash).to eq(
       [
-        { field: 'battery_discharging_power', measurement: 'PV', value: 0 },
-        { field: 'battery_charging_power', measurement: 'PV', value: 123 },
+        { field: 'battery_discharging_power', measurement: 'PV', value: 0.0 },
+        { field: 'battery_charging_power', measurement: 'PV', value: 123.45 },
       ],
     )
+
+    expect(hash).to all(include(value: a_kind_of(Float)))
   end
 
   it 'maps bat_power' do
@@ -301,10 +303,12 @@ describe Mapper do
 
     expect(hash).to eq(
       [
-        { field: 'battery_discharging_power', measurement: 'PV', value: 123 },
-        { field: 'battery_charging_power', measurement: 'PV', value: 0 },
+        { field: 'battery_discharging_power', measurement: 'PV', value: 123.45 },
+        { field: 'battery_charging_power', measurement: 'PV', value: 0.0 },
       ],
     )
+
+    expect(hash).to all(include(value: a_kind_of(Float)))
   end
 
   it 'maps grid_power_plus' do
@@ -316,6 +320,8 @@ describe Mapper do
         { field: 'grid_import_power', measurement: 'PV', value: 123 },
       ],
     )
+
+    expect(hash).to all(include(value: a_kind_of(Integer)))
   end
 
   it 'maps grid_power_minus' do
@@ -327,6 +333,8 @@ describe Mapper do
         { field: 'grid_import_power', measurement: 'PV', value: 0 },
       ],
     )
+
+    expect(hash).to all(include(value: a_kind_of(Integer)))
   end
 
   it 'maps current_state' do
