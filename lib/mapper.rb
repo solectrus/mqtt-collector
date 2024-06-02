@@ -126,12 +126,12 @@ class Mapper
       {
         measurement: mapping[:measurement_negative],
         field: mapping[:field_negative],
-        value: value.negative? ? value.abs : 0,
+        value: value.negative? ? value.abs : convert_type('0', mapping),
       },
       {
         measurement: mapping[:measurement_positive],
         field: mapping[:field_positive],
-        value: value.positive? ? value : 0,
+        value: value.positive? ? value : convert_type('0', mapping),
       },
     ]
   end
