@@ -20,7 +20,6 @@
 
 $:.unshift File.dirname(__FILE__) + '/../lib'
 
-require 'logger'
 require 'socket'
 require 'mqtt'
 
@@ -31,7 +30,7 @@ class MQTT::FakeServer
   attr_reader :pings_received
   attr_accessor :respond_to_pings
   attr_accessor :just_one_connection
-  attr_writer :logger
+  attr_accessor :logger
   attr_accessor :payload
 
   # Create a new fake MQTT server
@@ -44,11 +43,6 @@ class MQTT::FakeServer
     @pings_received = 0
     @just_one_connection = false
     @respond_to_pings = true
-  end
-
-  # Get the logger used by the server
-  def logger
-    @logger ||= Logger.new(STDOUT)
   end
 
   # Start the thread and open the socket that will process client connections
@@ -128,6 +122,9 @@ class MQTT::FakeServer
     end
   rescue MQTT::ProtocolException => e
     logger.warn "Protocol error, closing connection: #{e}"
+    client.close
+  rescue Errno::EPIPE, Errno::ECONNRESET
+    logger.warn "Error, closing connection: #{e}"
     client.close
   end
 end

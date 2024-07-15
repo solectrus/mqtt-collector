@@ -1,14 +1,50 @@
 require:
-  - rubocop-minitest
+  - rubocop-rspec
   - rubocop-rake
   - rubocop-performance
 
 AllCops:
-  TargetRubyVersion: 3.2
+  TargetRubyVersion: 3.3
   Exclude:
     - Gemfile
     - 'vendor/**/*'
   NewCops: enable
+
+# Layout
+
+Layout/LineLength:
+  Max: 130
+
+Layout/LineEndStringConcatenationIndentation:
+  Enabled: false
+
+Layout/MultilineOperationIndentation:
+  Enabled: false
+
+Layout/EmptyComment:
+  Enabled: false
+
+# Metrics
+
+Metrics/AbcSize:
+  Max: 35
+
+Metrics/ClassLength:
+  Enabled: false
+
+Metrics/MethodLength:
+  Max: 35
+
+Metrics/BlockLength:
+  Max: 30
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
+
+# Style
 
 Style/Documentation:
   Enabled: false
@@ -16,17 +52,34 @@ Style/Documentation:
 Style/FrozenStringLiteralComment:
   Enabled: false
 
-Metrics/MethodLength:
-  Max: 20
-
 Style/TrailingCommaInArguments:
+  EnforcedStyleForMultiline: consistent_comma
+
+Style/TrailingCommaInArrayLiteral:
   EnforcedStyleForMultiline: consistent_comma
 
 Style/TrailingCommaInHashLiteral:
   EnforcedStyleForMultiline: consistent_comma
 
-Layout/LineEndStringConcatenationIndentation:
+Style/IfUnlessModifier:
   Enabled: false
 
-Layout/FirstArrayElementIndentation:
+Style/MultilineBlockChain:
+  Enabled: false
+
+Style/EmptyMethod:
+  Enabled: false
+
+# RSpec
+
+RSpec/ExampleLength:
+  Enabled: false
+
+RSpec/NestedGroups:
+  Max: 4
+
+RSpec/NoExpectationExample:
+  Enabled: false
+
+RSpec/MultipleExpectations:
   Enabled: false

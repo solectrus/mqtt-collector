@@ -1,18 +1,18 @@
 [![Continuous integration](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml/badge.svg)](https://github.com/solectrus/mqtt-collector/actions/workflows/push.yml)
+[![Maintainability](https://api.codeclimate.com/v1/badges/22171f55998309dcdfe1/maintainability)](https://codeclimate.com/github/solectrus/mqtt-collector/maintainability)
 [![wakatime](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85.svg)](https://wakatime.com/badge/user/697af4f5-617a-446d-ba58-407e7f3e0243/project/233968fc-9ac5-4c50-952f-ec1a37b3df85)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/22171f55998309dcdfe1/test_coverage)](https://codeclimate.com/github/solectrus/mqtt-collector/test_coverage)
 
 # MQTT collector
 
-Collect data from MQTT broker and push it to InfluxDB 2 for use with SOLECTRUS.
+Collect data from MQTT broker and push it to InfluxDB 2. The mappings of MQTT topics to InfluxDB fields and measurements is customizable.
 
-**BEWARE:** This project has just started and should be considered experimental. If you encounter any problems, please [open an issue](https://github.com/solectrus/mqtt-collector/issues).
+The main use case is to collect data for SOLECTRUS, but it can be used for other purposes as well, where you want to collect data from MQTT and store it in InfluxDB.
 
-It has been roughly tested in the following setups:
+It has been tested in the following setups:
 
 - [ioBroker](https://www.iobroker.net/) with the integrated MQTT broker and the [SENEC Home 2.1 adapter](https://github.com/nobl/ioBroker.senec)
 - [evcc](https://evcc.io/) with the [senec-home template](https://github.com/evcc-io/evcc/blob/master/templates/definition/meter/senec-home.yaml) and the [HiveMQ MQTT Broker](https://www.hivemq.com/public-mqtt-broker/)
-
-I'm **very interested** in your feedback, especially if you are using other devices or MQTT brokers. Please [open an issue](https://github.com/solectrus/mqtt-collector/issues) or use the [forum](https://github.com/orgs/solectrus/discussions).
 
 Note: For a SENEC device there is a dedicated [senec-collector](https://github.com/solectrus/senec-collector) available which communicates directly with the SENEC device via its API and does not require a MQTT broker. Also, it is able to collect additional and more accurate data from the SENEC device.
 
@@ -34,7 +34,7 @@ Note: For a SENEC device there is a dedicated [senec-collector](https://github.c
    docker compose up
    ```
 
-The Docker image support multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
+The Docker image supports multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
 
 ## Development
 
@@ -43,7 +43,7 @@ For development you need a recent Ruby setup. On a Mac, I recommend [rbenv](http
 ### Run the app
 
 ```bash
-bundle exec app/main.rb
+bundle exec app.rb
 ```
 
 ### Run tests
@@ -58,15 +58,7 @@ bundle exec rake
 bundle exec rubocop
 ```
 
-### Build Docker image by yourself
-
-Example for Raspberry Pi:
-
-```bash
-docker buildx build --platform linux/arm64 -t mqtt-collector .
-```
-
 ## License
 
-Copyright (c) 2023 Georg Ledermann <georg@ledermann.dev> and contributors.\
+Copyright (c) 2023-2024 Georg Ledermann <georg@ledermann.dev> and contributors.\
 Inspired by code provided by Sebastian Löb (@loebse) and Michael Heß (@GrimmiMeloni)

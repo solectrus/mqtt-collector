@@ -1,4 +1,4 @@
-FROM ruby:3.2.2-alpine AS Builder
+FROM ruby:3.3.4-alpine AS Builder
 RUN apk add --no-cache build-base
 
 WORKDIR /mqtt-collector
@@ -8,8 +8,11 @@ RUN bundle config --local frozen 1 && \
     bundle install -j4 --retry 3 && \
     bundle clean --force
 
-FROM ruby:3.2.2-alpine
+FROM ruby:3.3.4-alpine
 LABEL maintainer="georg@ledermann.dev"
+
+# Add tzdata to get correct timezone
+RUN apk add --no-cache tzdata
 
 # Decrease memory usage
 ENV MALLOC_ARENA_MAX 2
@@ -29,4 +32,4 @@ WORKDIR /mqtt-collector
 COPY --from=Builder /usr/local/bundle/ /usr/local/bundle/
 COPY . /mqtt-collector/
 
-ENTRYPOINT bundle exec app/main.rb
+ENTRYPOINT bundle exec app.rb
