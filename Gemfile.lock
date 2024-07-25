@@ -16,7 +16,7 @@ GEM
     dentaku (3.5.3)
       concurrent-ruby
     diff-lcs (1.5.1)
-    docile (1.4.0)
+    docile (1.4.1)
     dotenv (3.1.2)
     ffi (1.17.0)
     formatador (1.1.0)
