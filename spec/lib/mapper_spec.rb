@@ -165,13 +165,10 @@ EXPECTED_TOPICS = %w[
 ].freeze
 
 describe Mapper do
-  def default_config
-    @default_config ||= Config.new(VALID_ENV)
-  end
+  subject(:mapper) { described_class.new(config:) }
 
-  def mapper(config: nil)
-    Mapper.new(config: config || default_config)
-  end
+  let(:config) { Config.new(VALID_ENV, logger:) }
+  let(:logger) { MemoryLogger.new }
 
   it 'has topics' do
     expect(mapper.topics).to eq(EXPECTED_TOPICS)
