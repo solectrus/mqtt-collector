@@ -411,10 +411,28 @@ describe Mapper do
     )
   end
 
+  it 'maps NULL to 0' do
+    hash =
+      mapper.records_for('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', nil)
+
+    expect(hash).to eq(
+      [{ field: 'wallbox_power0', measurement: 'PV', value: 0 }],
+    )
+  end
+
   it 'handles invalid JSON' do
     hash = mapper.records_for('somewhere/ATTR', 'this is not JSON')
 
-    expect(hash).to eq([])
+    expect(logger.warn_messages).to include(/Failed to parse JSON/)
+    expect(hash).to eq(
+      [
+        { field: 'leaving_temp', measurement: 'HEATPUMP', value: 0.0 },
+        { field: 'inlet_temp', measurement: 'HEATPUMP', value: 0.0 },
+        { field: 'water_flow', measurement: 'HEATPUMP', value: 0.0 },
+        { field: 'temp_diff', measurement: 'HEATPUMP', value: 0.0 },
+        { field: 'heat', measurement: 'HEATPUMP', value: 0.0 },
+      ],
+    )
   end
 
   it 'handles invalid value types' do
