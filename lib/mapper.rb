@@ -68,7 +68,7 @@ class Mapper
       message = evaluate_from_json(message, mapping)
     end
 
-    convert_type(message, mapping) if message
+    convert_type(message, mapping)
   end
 
   def convert_type(message, mapping)

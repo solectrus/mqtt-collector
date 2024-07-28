@@ -16,7 +16,7 @@ GEM
     dentaku (3.5.3)
       concurrent-ruby
     diff-lcs (1.5.1)
-    docile (1.4.0)
+    docile (1.4.1)
     dotenv (3.1.2)
     ffi (1.17.0)
     formatador (1.1.0)
@@ -58,7 +58,7 @@ GEM
     pry (0.14.2)
       coderay (~> 1.1)
       method_source (~> 1.0)
-    public_suffix (6.0.0)
+    public_suffix (6.0.1)
     racc (1.8.0)
     rainbow (3.1.1)
     rake (13.2.1)
@@ -66,7 +66,7 @@ GEM
     rb-inotify (0.11.1)
       ffi (~> 1.0)
     regexp_parser (2.9.2)
-    rexml (3.3.1)
+    rexml (3.3.2)
       strscan
     rspec (3.13.0)
       rspec-core (~> 3.13.0)
@@ -143,4 +143,4 @@ DEPENDENCIES
   webmock
 
 BUNDLED WITH
-   2.5.15
+   2.5.16

@@ -8,7 +8,7 @@
 .rubocop.yml
 .vscode
 coverage
-docker-compose.yml
+compose.yml
 Dockerfile
 Guardfile
 Rakefile
