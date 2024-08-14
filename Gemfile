@@ -18,9 +18,6 @@ gem 'base64'
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 
-# Arbitrary-precision decimal floating-point number library. (https://github.com/ruby/bigdecimal)
-gem 'bigdecimal'
-
 # Ruby implementation of http://goessner.net/articles/JsonPath/ (https://github.com/joshbuddy/jsonpath)
 gem 'jsonpath'
 
