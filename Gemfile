@@ -12,9 +12,6 @@ gem 'mqtt'
 # CSV Reading and Writing (https://github.com/ruby/csv)
 gem 'csv'
 
-# Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
-gem 'base64'
-
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 

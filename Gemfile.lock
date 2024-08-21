@@ -125,7 +125,6 @@ PLATFORMS
 
 DEPENDENCIES
   amazing_print
-  base64
   csv
   dentaku
   dotenv
