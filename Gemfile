@@ -15,6 +15,12 @@ gem 'csv'
 # Provides a simple logging utility for outputting messages. (https://github.com/ruby/logger)
 gem 'logger'
 
+# Support for encoding and decoding binary data using a Base64 representation. (https://github.com/ruby/base64)
+gem 'base64'
+
+# Class to build custom data structures, similar to a Hash. (https://github.com/ruby/ostruct)
+gem 'ostruct'
+
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 
