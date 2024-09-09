@@ -12,6 +12,9 @@ gem 'mqtt'
 # CSV Reading and Writing (https://github.com/ruby/csv)
 gem 'csv'
 
+# Provides a simple logging utility for outputting messages. (https://github.com/ruby/logger)
+gem 'logger'
+
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 
