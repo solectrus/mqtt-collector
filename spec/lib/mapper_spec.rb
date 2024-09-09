@@ -19,6 +19,8 @@ VALID_ENV = {
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'inverter_power',
   'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_MIN' => '5',
+  'MAPPING_0_MAX' => '15000',
   #
   'MAPPING_1_TOPIC' => 'senec/0/ENERGY/GUI_HOUSE_POW',
   'MAPPING_1_MEASUREMENT' => 'PV',
@@ -176,7 +178,7 @@ describe Mapper do
 
   it 'formats mapping' do
     expect(mapper.formatted_mapping('senec/0/ENERGY/GUI_INVERTER_POWER')).to eq(
-      'PV:inverter_power (integer)',
+      'PV:inverter_power (5 ≥ integer ≤ 15000)',
     )
 
     expect(
@@ -441,6 +443,24 @@ describe Mapper do
 
     hash = mapper.records_for('senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE', :foo)
     expect(hash).to eq([])
+  end
+
+  it 'handles value < minimum' do
+    hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '-10')
+
+    expect(hash).to eq(
+      [],
+    )
+    expect(logger.warn_messages).to include(/Ignoring inverter_power: -10 is below minimum of 5/)
+  end
+
+  it 'handles value > maximum' do
+    hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '16000')
+
+    expect(hash).to eq(
+      [],
+    )
+    expect(logger.warn_messages).to include(/Ignoring inverter_power: 16000 exceeds maximum of 15000/)
   end
 
   it 'raises on unknown topic' do

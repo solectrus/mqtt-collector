@@ -22,7 +22,7 @@ class Mapper
             "#{mapping[:measurement]}:#{mapping[:field]}"
           end
 
-        result += " (#{mapping[:type]})"
+        result += " (#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}#{" ≤ #{mapping[:max]}" if mapping[:max]})"
         result
       end
       .join(', ')
@@ -74,24 +74,50 @@ class Mapper
   def convert_type(message, mapping)
     case mapping[:type]
     when 'float'
-      begin
+      convert_float(message, mapping)
+    when 'integer'
+      convert_integer(message, mapping)
+    when 'boolean'
+      convert_boolean(message, mapping)
+    when 'string'
+      convert_string(message, mapping)
+    end
+  end
+
+  def convert_float(message, mapping)
+    ensure_min_max(
+      field: mapping[:field],
+      value: (begin
         message.to_f
       rescue StandardError
         config.logger.warn "Failed to convert #{message} to float"
         nil
-      end
-    when 'integer'
-      begin
+      end),
+      min: mapping[:min]&.to_f,
+      max: mapping[:max]&.to_f,
+    )
+  end
+
+  def convert_integer(message, mapping)
+    ensure_min_max(
+      field: mapping[:field],
+      value: (begin
         message.to_f.round
       rescue StandardError
         config.logger.warn "Failed to convert #{message} to integer"
         nil
-      end
-    when 'boolean'
-      %w[true ok yes on 1].include?(message.to_s.downcase)
-    when 'string'
-      message.to_s
-    end
+      end),
+      min: mapping[:min]&.to_i,
+      max: mapping[:max]&.to_i,
+    )
+  end
+
+  def convert_boolean(message, _mapping)
+    %w[true ok yes on 1].include?(message.to_s.downcase)
+  end
+
+  def convert_string(message, _mapping)
+    message.to_s
   end
 
   def extract_from_json(message, mapping)
@@ -142,5 +168,21 @@ class Mapper
 
   def mappings_for(topic)
     config.mappings.select { |mapping| mapping[:topic] == topic }
+  end
+
+  def ensure_min_max(field:, value:, min:, max:)
+    return value unless value && (max || min)
+
+    if max && value > max
+      config.logger.warn "  Ignoring #{field}: #{value} exceeds maximum of #{max}"
+      return
+    end
+
+    if min && value < min
+      config.logger.warn "  Ignoring #{field}: #{value} is below minimum of #{min}"
+      return
+    end
+
+    value
   end
 end

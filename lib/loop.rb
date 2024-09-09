@@ -59,12 +59,13 @@ class Loop
     # There is no timestamp in the MQTT message, so we use the current time
     time = Time.now
 
-    records = mapper.records_for(topic, message)
-
     # Log all the data we received
     logger.info "# Message from #{time}"
     logger.info "  topic = #{topic}"
     logger.info "  message = #{message}"
+
+    # Convert the message to records
+    records = mapper.records_for(topic, message)
 
     # Log all the data we are going to push to InfluxDB
     records.each do |record|
