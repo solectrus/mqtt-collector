@@ -5,14 +5,14 @@ http_interactions:
     uri: http://localhost:8086/api/v2/write?bucket=my-bucket&org=my-org&precision=s
     body:
       encoding: UTF-8
-      string: my-measurement bat_fuel_charge=80.0 1709027027
+      string: PV battery_soc=80.0 1726812261
     headers:
       Accept-Encoding:
       - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
       Accept:
       - "*/*"
       User-Agent:
-      - influxdb-client-ruby/3.0.0
+      - influxdb-client-ruby/3.1.0
       Authorization:
       - Token my-token
       Content-Type:
@@ -25,11 +25,11 @@ http_interactions:
       X-Influxdb-Build:
       - OSS
       X-Influxdb-Version:
-      - v2.7.5
+      - v2.7.10
       Date:
-      - Tue, 27 Feb 2024 09:43:47 GMT
+      - Fri, 20 Sep 2024 06:04:21 GMT
     body:
       encoding: UTF-8
       string: ''
-  recorded_at: Tue, 27 Feb 2024 09:43:47 GMT
-recorded_with: VCR 6.2.0
+  recorded_at: Fri, 20 Sep 2024 06:04:21 GMT
+recorded_with: VCR 6.3.1
