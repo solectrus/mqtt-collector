@@ -175,11 +175,11 @@ class Config
   end
 
   def validate_mappings!
-    mappings.each do |value|
+    mappings.each do |mapping|
       # Ensure all required keys are present
-      unless (value.keys & %i[topic measurement field type]).size == 4 ||
+      unless (mapping.keys & %i[topic measurement field type]).size == 4 ||
                (
-                 value.keys &
+                 mapping.keys &
                    %i[
                      topic
                      measurement_positive
@@ -189,12 +189,12 @@ class Config
                      type
                    ]
                ).size == 6
-        raise ArgumentError, "Missing required keys: #{value.keys}"
+        raise ArgumentError, "Missing required keys for mapping: #{mapping.inspect}"
       end
 
       # Ensure type is valid
-      unless MAPPING_TYPES.include?(value[:type])
-        raise ArgumentError, "Invalid type: #{value[:type]}"
+      unless MAPPING_TYPES.include?(mapping[:type])
+        raise ArgumentError, "Invalid type: #{mapping[:type]}"
       end
     end
   end
