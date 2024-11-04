@@ -22,6 +22,12 @@ DEPRECATED_ENV = {
   'MQTT_TOPIC_HEATPUMP_POWER' => %w[heatpump_power integer],
 }.freeze
 
+class ConfigError < StandardError
+  def backtrace
+    []
+  end
+end
+
 class Config
   attr_accessor :mqtt_host,
                 :mqtt_port,
@@ -86,9 +92,12 @@ class Config
 
     mapping_groups
       .transform_values do |values|
-        values.to_h.transform_keys do |key|
-          key.match(MAPPING_REGEX)[2].downcase.to_sym
-        end
+        mapping_group = values.first[0].match(MAPPING_REGEX)[1]
+
+        values
+          .to_h
+          .transform_keys { |key| key.match(MAPPING_REGEX)[2].downcase.to_sym }
+          .merge(mapping_group:)
       end
       .values
   end
@@ -175,27 +184,45 @@ class Config
   end
 
   def validate_mappings!
-    mappings.each do |mapping|
-      # Ensure all required keys are present
-      unless (mapping.keys & %i[topic measurement field type]).size == 4 ||
-               (
-                 mapping.keys &
-                   %i[
-                     topic
-                     measurement_positive
-                     measurement_negative
-                     field_positive
-                     field_negative
-                     type
-                   ]
-               ).size == 6
-        raise ArgumentError, "Missing required keys for mapping: #{mapping.inspect}"
+    mappings.each_with_index do |mapping, index|
+      validate_mapping!(index, :topic)
+      validate_mapping!(index, :type, allow_list: MAPPING_TYPES)
+
+      if mapping[:field_positive] || mapping[:field_negative]
+        validate_mapping!(index, :field_positive)
+        validate_mapping!(index, :field_negative)
+        validate_mapping!(index, :measurement_positive)
+        validate_mapping!(index, :measurement_negative)
+
+        validate_mapping!(index, :field, present: false)
+        validate_mapping!(index, :measurement, present: false)
+      else
+        validate_mapping!(index, :field)
+        validate_mapping!(index, :measurement)
+
+        validate_mapping!(index, :field_negative, present: false)
+        validate_mapping!(index, :field_positive, present: false)
+        validate_mapping!(index, :measurement_positive, present: false)
+        validate_mapping!(index, :measurement_negative, present: false)
+      end
+    end
+  end
+
+  def validate_mapping!(index, key, present: true, allow_list: nil)
+    mapping = mappings[index]
+    var = "MAPPING_#{mapping[:mapping_group]}_#{key.upcase}"
+
+    if present
+      if mapping[key].nil? || mapping[key].strip == ''
+        raise ConfigError, "Missing variable: #{var}"
       end
 
-      # Ensure type is valid
-      unless MAPPING_TYPES.include?(mapping[:type])
-        raise ArgumentError, "Invalid type: #{mapping[:type]}"
+      if allow_list && !allow_list.include?(mapping[key])
+        raise ConfigError,
+              "Variable #{var} is invalid: #{mapping[key]}. Must be one of: #{allow_list.join(', ')}"
       end
+    elsif mapping[key]
+      raise ConfigError, "Unexpected variable: #{var}"
     end
   end
 end

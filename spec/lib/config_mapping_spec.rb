@@ -52,12 +52,14 @@ describe Config, '#mapping' do
             measurement: 'PV',
             field: 'inverter_power',
             type: 'integer',
+            mapping_group: '0',
           },
           {
             topic: 'senec/0/ENERGY/GUI_HOUSE_POW',
             measurement: 'PV',
             field: 'house_power',
             type: 'integer',
+            mapping_group: '1',
           },
           {
             topic: 'senec/0/ENERGY/GUI_GRID_POW',
@@ -66,6 +68,7 @@ describe Config, '#mapping' do
             field_positive: 'grid_import_power',
             field_negative: 'grid_export_power',
             type: 'integer',
+            mapping_group: '2',
           },
         ],
       )
@@ -86,7 +89,7 @@ describe Config, '#mapping' do
       let(:env) { other_env.merge(hash) }
 
       it 'raises an error' do
-        expect { config }.to raise_error(ArgumentError)
+        expect { config }.to raise_error(ConfigError)
       end
     end
   end
