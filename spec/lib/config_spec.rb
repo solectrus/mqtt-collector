@@ -140,12 +140,14 @@ describe Config do
               measurement: 'PV',
               field: 'inverter_power',
               type: 'integer',
+              mapping_group: '0',
             },
             {
               topic: 'senec/0/ENERGY/GUI_HOUSE_POW',
               measurement: 'PV',
               field: 'house_power',
               type: 'integer',
+              mapping_group: '1',
             },
             {
               topic: 'senec/0/ENERGY/GUI_GRID_POW',
@@ -154,12 +156,14 @@ describe Config do
               field_positive: 'grid_import_power',
               field_negative: 'grid_export_power',
               type: 'integer',
+              mapping_group: '2',
             },
             {
               topic: 'senec/0/PV1/POWER_RATIO',
               measurement: 'PV',
               field: 'grid_export_limit',
               type: 'integer',
+              mapping_group: '3',
             },
             {
               topic: 'senec/0/ENERGY/GUI_BAT_DATA_POWER',
@@ -168,36 +172,42 @@ describe Config do
               field_positive: 'battery_charging_power',
               field_negative: 'battery_discharging_power',
               type: 'integer',
+              mapping_group: '4',
             },
             {
               topic: 'senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE',
               measurement: 'PV',
               field: 'battery_soc',
               type: 'float',
+              mapping_group: '5',
             },
             {
               topic: 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/0',
               measurement: 'PV',
               field: 'wallbox_power',
               type: 'integer',
+              mapping_group: '6',
             },
             {
               topic: 'somewhere/HEATPUMP/POWER',
               measurement: 'HEATPUMP',
               field: 'power',
               type: 'integer',
+              mapping_group: '7',
             },
             {
               topic: 'senec/0/TEMPMEASURE/CASE_TEMP',
               measurement: 'PV',
               field: 'case_temp',
               type: 'float',
+              mapping_group: '8',
             },
             {
               topic: 'senec/0/ENERGY/STAT_STATE_Text',
               measurement: 'PV',
               field: 'system_status',
               type: 'string',
+              mapping_group: '9',
             },
           ],
         )
@@ -452,27 +462,61 @@ describe Config do
   end
 
   describe 'invalid options' do
-    context 'when all blank' do
-      let(:env) { {} }
+    [
+      ->(env) { env.except('MQTT_HOST') },
+      ->(env) { env.except('MQTT_PORT') },
+      ->(env) { env.except('INFLUX_HOST') },
+      ->(env) { env.except('INFLUX_TOKEN') },
+      ->(env) { env.except('INFLUX_ORG') },
+      ->(env) { env.except('INFLUX_BUCKET') },
+    ].each do |test_case|
+      it 'raises an KeyError' do
+        env = test_case.call(valid_env)
 
-      it 'raises an exception' do
-        expect { described_class.new(env) }.to raise_error(Exception)
+        expect { described_class.new(env) }.to raise_error(KeyError)
       end
     end
+  end
 
-    context 'when missing MQTT_HOST' do
-      let(:env) { valid_env.except('MQTT_HOST') }
+  describe 'invalid mappings' do
+    [
+      # Missing keys (for a simple mapping)
+      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_TOPIC'],
+      [:except, 'MAPPING_0_FIELD', 'Missing variable: MAPPING_0_FIELD'],
+      [:except, 'MAPPING_0_MEASUREMENT', 'Missing variable: MAPPING_0_MEASUREMENT'],
+      [:except, 'MAPPING_0_TYPE', 'Missing variable: MAPPING_0_TYPE'],
+      # Missing keys (for a positive/negative mapping)
+      [:except, 'MAPPING_4_FIELD_POSITIVE', 'Missing variable: MAPPING_4_FIELD_POSITIVE'],
+      [:except, 'MAPPING_4_FIELD_NEGATIVE', 'Missing variable: MAPPING_4_FIELD_NEGATIVE'],
+      [:except, 'MAPPING_4_MEASUREMENT_POSITIVE', 'Missing variable: MAPPING_4_MEASUREMENT_POSITIVE'],
+      [:except, 'MAPPING_4_MEASUREMENT_NEGATIVE', 'Missing variable: MAPPING_4_MEASUREMENT_NEGATIVE'],
+      # Blank keys (for a simple mapping)
+      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_TOPIC'],
+      [:merge, { 'MAPPING_0_FIELD' => '' }, 'Missing variable: MAPPING_0_FIELD'],
+      [:merge, { 'MAPPING_0_MEASUREMENT' => '' }, 'Missing variable: MAPPING_0_MEASUREMENT'],
+      [:merge, { 'MAPPING_0_TYPE' => '' }, 'Missing variable: MAPPING_0_TYPE'],
+      # Blank keys (for a positive/negative mapping)
+      [:merge, { 'MAPPING_4_FIELD_POSITIVE' => '' }, 'Missing variable: MAPPING_4_FIELD_POSITIVE'],
+      [:merge, { 'MAPPING_4_MEASUREMENT_POSITIVE' => '' }, 'Missing variable: MAPPING_4_MEASUREMENT_POSITIVE'],
+      [:merge, { 'MAPPING_4_FIELD_NEGATIVE' => '' }, 'Missing variable: MAPPING_4_FIELD_NEGATIVE'],
+      [:merge, { 'MAPPING_4_MEASUREMENT_NEGATIVE' => '' }, 'Missing variable: MAPPING_4_MEASUREMENT_NEGATIVE'],
+      # Superfluous keys
+      [:merge, { 'MAPPING_4_FIELD' => 'foo' }, 'Unexpected variable: MAPPING_4_FIELD'],
+      [:merge, { 'MAPPING_4_MEASUREMENT' => 'foo' }, 'Unexpected variable: MAPPING_4_MEASUREMENT'],
+      [:merge, { 'MAPPING_0_MEASUREMENT_POSITIVE' => 'foo' }, 'Unexpected variable: MAPPING_0_MEASUREMENT_POSITIVE'],
+      [:merge, { 'MAPPING_0_MEASUREMENT_NEGATIVE' => 'foo' }, 'Unexpected variable: MAPPING_0_MEASUREMENT_NEGATIVE'],
+      # Invalid type
+      [:merge, { 'MAPPING_0_TYPE' => 'this-is-no-type' }, 'Variable MAPPING_0_TYPE is invalid: this-is-no-type. ' \
+                                                          'Must be one of: integer, float, string, boolean',],
+    ].each do |test_case|
+      message = test_case[2]
 
-      it 'raises an exception' do
-        expect { described_class.new(env) }.to raise_error(Exception)
-      end
-    end
+      it "raises an ConfigError ('#{message}')" do
+        env = valid_env.public_send(test_case[0], test_case[1])
 
-    context 'when mapping type is invalid' do
-      let(:env) { valid_env.merge('MAPPING_0_TYPE' => 'this-is-no-type') }
-
-      it 'raises an exception' do
-        expect { described_class.new(env) }.to raise_error(Exception)
+        expect { described_class.new(env) }.to raise_error(
+          ConfigError,
+        ).with_message(message)
       end
     end
   end
