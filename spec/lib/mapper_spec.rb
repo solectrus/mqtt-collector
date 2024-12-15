@@ -142,6 +142,12 @@ VALID_ENV = {
   'MAPPING_22_MEASUREMENT' => 'WALLBOX',
   'MAPPING_22_FIELD' => 'power',
   'MAPPING_22_TYPE' => 'float',
+  #
+  'MAPPING_23_TOPIC' => 'somewhere/power-kwh',
+  'MAPPING_23_FORMULA' => '{value} * 1000',
+  'MAPPING_23_MEASUREMENT' => 'Consumer',
+  'MAPPING_23_FIELD' => 'power',
+  'MAPPING_23_TYPE' => 'float',
 }.freeze
 
 EXPECTED_TOPICS = %w[
@@ -164,6 +170,7 @@ EXPECTED_TOPICS = %w[
   somewhere/ATTR
   somewhere/HEATPUMP/POWER
   somewhere/STAT_STATE_OK
+  somewhere/power-kwh
 ].freeze
 
 describe Mapper do
@@ -409,6 +416,16 @@ describe Mapper do
         { measurement: 'HEATPUMP', field: 'water_flow',   value: 16.45 },
         { measurement: 'HEATPUMP', field: 'temp_diff',    value: 14.7 },   # 35.2 - 20.5
         { measurement: 'HEATPUMP', field: 'heat',         value: 16_874 }, # (16.45 * 60 * 1.163 * (20.5 - 35.2)).round
+      ],
+    )
+  end
+
+  it 'maps plain value and calculates formula' do
+    hash = mapper.records_for('somewhere/power-kwh', '123.45')
+
+    expect(hash).to eq(
+      [
+        { measurement: 'Consumer', field: 'power', value: 123_450 },
       ],
     )
   end

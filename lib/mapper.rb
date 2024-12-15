@@ -65,7 +65,9 @@ class Mapper
     if mapping[:json_key] || mapping[:json_path]
       message = extract_from_json(message, mapping)
     elsif mapping[:json_formula]
-      message = evaluate_from_json(message, mapping)
+      message = evaluate_from_json(message, mapping[:json_formula])
+    elsif mapping[:formula]
+      message = evaluate_from_json({ value: message }.to_json, mapping[:formula])
     end
     unless message
       config.logger.warn '  Value not found, ignoring.'
@@ -137,11 +139,11 @@ class Mapper
     end
   end
 
-  def evaluate_from_json(message, mapping)
+  def evaluate_from_json(message, formula)
     json = parse_json(message)
     return unless json
 
-    Evaluator.new(expression: mapping[:json_formula], data: json).run
+    Evaluator.new(expression: formula, data: json).run
   end
 
   def parse_json(message)
