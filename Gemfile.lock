@@ -19,7 +19,7 @@ GEM
     diff-lcs (1.5.1)
     docile (1.4.1)
     dotenv (3.1.7)
-    ffi (1.17.0)
+    ffi (1.17.1)
     formatador (1.1.0)
     guard (2.19.0)
       formatador (>= 0.2.4)
