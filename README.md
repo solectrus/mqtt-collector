@@ -60,5 +60,5 @@ bundle exec rubocop
 
 ## License
 
-Copyright (c) 2023-2024 Georg Ledermann <georg@ledermann.dev> and contributors.\
+Copyright (c) 2023-2025 Georg Ledermann <georg@ledermann.dev> and contributors.\
 Inspired by code provided by Sebastian Löb (@loebse) and Michael Heß (@GrimmiMeloni)
