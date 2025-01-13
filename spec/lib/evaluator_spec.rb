@@ -39,6 +39,54 @@ describe Evaluator do
     end
   end
 
+  context 'with valid expression using IF' do
+    let(:expression) { "IF({x} > {y} AND {x} < {z}, 'TRUE', 'FALSE')" }
+
+    context 'when condition is true' do
+      let(:data) { { 'x' => 6, 'y' => 2, 'z' => 10 } }
+
+      it 'evaluates the expression' do
+        expect(evaluator.run).to eq('TRUE')
+      end
+    end
+
+    context 'when condition is false' do
+      let(:data) { { 'x' => 1, 'y' => 3, 'z' => 10 } }
+
+      it 'evaluates the expression' do
+        expect(evaluator.run).to eq('FALSE')
+      end
+    end
+  end
+
+  context 'with valid expression using nested IF' do
+    let(:expression) { "IF({x} == {y}, 'EQUAL', IF({x} > {y}, 'GREATER', 'LESS'))" }
+
+    context 'when case 1' do
+      let(:data) { { 'x' => 6, 'y' => 2 } }
+
+      it 'evaluates the expression' do
+        expect(evaluator.run).to eq('GREATER')
+      end
+    end
+
+    context 'when case 2' do
+      let(:data) { { 'x' => 6, 'y' => 6 } }
+
+      it 'evaluates the expression' do
+        expect(evaluator.run).to eq('EQUAL')
+      end
+    end
+
+    context 'when case 3' do
+      let(:data) { { 'x' => 6, 'y' => 7 } }
+
+      it 'evaluates the expression' do
+        expect(evaluator.run).to eq('LESS')
+      end
+    end
+  end
+
   context 'with invalid expression (missing curley braces)' do
     let(:expression) { '(a + b) / 2' }
     let(:data) { { 'a' => 2, 'b' => 5 } }

@@ -142,6 +142,12 @@ VALID_ENV = {
   'MAPPING_22_MEASUREMENT' => 'WALLBOX',
   'MAPPING_22_FIELD' => 'power',
   'MAPPING_22_TYPE' => 'float',
+  #
+  'MAPPING_23_TOPIC' => 'somewhere/power-kwh',
+  'MAPPING_23_FORMULA' => '{value} * 1000',
+  'MAPPING_23_MEASUREMENT' => 'Consumer',
+  'MAPPING_23_FIELD' => 'power',
+  'MAPPING_23_TYPE' => 'float',
 }.freeze
 
 EXPECTED_TOPICS = %w[
@@ -164,6 +170,7 @@ EXPECTED_TOPICS = %w[
   somewhere/ATTR
   somewhere/HEATPUMP/POWER
   somewhere/STAT_STATE_OK
+  somewhere/power-kwh
 ].freeze
 
 describe Mapper do
@@ -413,12 +420,23 @@ describe Mapper do
     )
   end
 
-  it 'maps NULL to 0' do
+  it 'maps plain value and calculates formula' do
+    hash = mapper.records_for('somewhere/power-kwh', '123.45')
+
+    expect(hash).to eq(
+      [
+        { measurement: 'Consumer', field: 'power', value: 123_450 },
+      ],
+    )
+  end
+
+  it 'ignores NULL value' do
     hash =
       mapper.records_for('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', nil)
 
+    expect(logger.warn_messages).to include(/ignoring/)
     expect(hash).to eq(
-      [{ field: 'wallbox_power0', measurement: 'PV', value: 0 }],
+      [],
     )
   end
 
@@ -427,13 +445,7 @@ describe Mapper do
 
     expect(logger.warn_messages).to include(/Failed to parse JSON/)
     expect(hash).to eq(
-      [
-        { field: 'leaving_temp', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'inlet_temp', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'water_flow', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'temp_diff', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'heat', measurement: 'HEATPUMP', value: 0.0 },
-      ],
+      [],
     )
   end
 
