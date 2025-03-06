@@ -69,10 +69,6 @@ class Mapper
     elsif mapping[:formula]
       message = evaluate_from_json({ value: message }.to_json, mapping[:formula])
     end
-    unless message
-      config.logger.warn '  Value not found, ignoring.'
-      return
-    end
 
     convert_type(message, mapping)
   end
