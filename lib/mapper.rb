@@ -22,7 +22,11 @@ class Mapper
             "#{mapping[:measurement]}:#{mapping[:field]}"
           end
 
-        result += " (#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}#{" ≤ #{mapping[:max]}" if mapping[:max]})"
+        result += ' (' \
+                  "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
+                  "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
+                  "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
+                  ')'
         result
       end
       .join(', ')
@@ -68,6 +72,11 @@ class Mapper
       message = evaluate_from_json(message, mapping[:json_formula])
     elsif mapping[:formula]
       message = evaluate_from_json({ value: message }.to_json, mapping[:formula])
+    end
+
+    if message.nil? && mapping[:null_to_zero] != 'true'
+      config.logger.warn '  Value not found, ignoring.'
+      return
     end
 
     convert_type(message, mapping)

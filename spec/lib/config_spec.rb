@@ -40,6 +40,7 @@ describe Config do
       'MAPPING_5_FIELD' => 'battery_soc',
       'MAPPING_5_TYPE' => 'float',
       'MAPPING_6_TOPIC' => 'senec/0/WALLBOX/APPARENT_CHARGING_POWER/0',
+      'MAPPING_6_NULL_TO_ZERO' => 'true',
       'MAPPING_6_MEASUREMENT' => 'PV',
       'MAPPING_6_FIELD' => 'wallbox_power',
       'MAPPING_6_TYPE' => 'integer',
@@ -187,6 +188,7 @@ describe Config do
               field: 'wallbox_power',
               type: 'integer',
               mapping_group: '6',
+              null_to_zero: 'true',
             },
             {
               topic: 'somewhere/HEATPUMP/POWER',
@@ -508,6 +510,9 @@ describe Config do
       # Invalid type
       [:merge, { 'MAPPING_0_TYPE' => 'this-is-no-type' }, 'Variable MAPPING_0_TYPE is invalid: this-is-no-type. ' \
                                                           'Must be one of: integer, float, string, boolean',],
+      # Invalid null_to_zero
+      [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
+       'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
     ].each do |test_case|
       message = test_case[2]
 
