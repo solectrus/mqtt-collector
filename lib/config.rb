@@ -188,6 +188,10 @@ class Config
       validate_mapping!(index, :topic)
       validate_mapping!(index, :type, allow_list: MAPPING_TYPES)
 
+      if mapping[:null_to_zero]
+        validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
+      end
+
       if mapping[:field_positive] || mapping[:field_negative]
         validate_mapping!(index, :field_positive)
         validate_mapping!(index, :field_negative)

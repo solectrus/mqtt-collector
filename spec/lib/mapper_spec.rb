@@ -142,6 +142,7 @@ VALID_ENV = {
   'MAPPING_22_MEASUREMENT' => 'WALLBOX',
   'MAPPING_22_FIELD' => 'power',
   'MAPPING_22_TYPE' => 'float',
+  'MAPPING_22_NULL_TO_ZERO' => 'true',
   #
   'MAPPING_23_TOPIC' => 'somewhere/power-kwh',
   'MAPPING_23_FORMULA' => '{value} * 1000',
@@ -194,7 +195,7 @@ describe Mapper do
 
     expect(
       mapper.formatted_mapping('go-e/ATTR'),
-    ).to eq('WALLBOX:power (float)')
+    ).to eq('WALLBOX:power (float, converting NULL to 0)')
   end
 
   it 'formats mapping with sign' do
@@ -430,12 +431,24 @@ describe Mapper do
     )
   end
 
-  it 'maps NULL to 0' do
+  it 'converts NULL to 0 (because NULL_TO_ZERO is "true")' do
     hash =
-      mapper.records_for('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', nil)
+      mapper.records_for(
+        'go-e/ATTR',
+        '{"ccp": [103.5098,-9787.971,null,null,10072.18,-180.701,null,100.2145,null,null,null,null,null,null,null,null]}',
+      )
 
     expect(hash).to eq(
-      [{ field: 'wallbox_power0', measurement: 'PV', value: 0 }],
+      [{ field: 'power', measurement: 'WALLBOX', value: 0 }],
+    )
+  end
+
+  it 'ignores NULL value (because NULL_TO_ZERO is not set)' do
+    hash =
+      mapper.records_for('senec/0/WALLBOX/APPARENT_CHARGING_POWER/1', nil)
+
+    expect(hash).to eq(
+      [],
     )
   end
 
@@ -444,13 +457,7 @@ describe Mapper do
 
     expect(logger.warn_messages).to include(/Failed to parse JSON/)
     expect(hash).to eq(
-      [
-        { field: 'leaving_temp', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'inlet_temp', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'water_flow', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'temp_diff', measurement: 'HEATPUMP', value: 0.0 },
-        { field: 'heat', measurement: 'HEATPUMP', value: 0.0 },
-      ],
+      [],
     )
   end
 
