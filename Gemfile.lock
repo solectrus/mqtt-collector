@@ -12,7 +12,7 @@ GEM
     crack (1.0.0)
       bigdecimal
       rexml
-    csv (3.3.2)
+    csv (3.3.3)
     dentaku (3.5.4)
       bigdecimal
       concurrent-ruby
