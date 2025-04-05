@@ -46,7 +46,7 @@ class Loop
     count = 0
     loop do
       time, records = next_message
-      influx_push.call(records, time: time.to_i)
+      influx_push.call(records, time: time.to_i) if records.any?
 
       count += 1
       break if max_count && count >= max_count
