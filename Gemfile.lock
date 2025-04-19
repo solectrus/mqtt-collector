@@ -4,7 +4,7 @@ GEM
     addressable (2.8.7)
       public_suffix (>= 2.0.2, < 7.0)
     amazing_print (1.7.2)
-    ast (2.4.2)
+    ast (2.4.3)
     base64 (0.2.0)
     bigdecimal (3.1.9)
     coderay (1.1.3)
@@ -12,14 +12,14 @@ GEM
     crack (1.0.0)
       bigdecimal
       rexml
-    csv (3.3.2)
+    csv (3.3.4)
     dentaku (3.5.4)
       bigdecimal
       concurrent-ruby
-    diff-lcs (1.6.0)
+    diff-lcs (1.6.1)
     docile (1.4.1)
-    dotenv (3.1.7)
-    ffi (1.17.1)
+    dotenv (3.1.8)
+    ffi (1.17.2)
     formatador (1.1.0)
     guard (2.19.1)
       formatador (>= 0.2.4)
@@ -40,7 +40,7 @@ GEM
     hashdiff (1.1.2)
     influxdb-client (3.2.0)
       csv
-    json (2.10.1)
+    json (2.10.2)
     jsonpath (1.1.5)
       multi_json
     language_server-protocol (3.17.0.4)
@@ -48,7 +48,7 @@ GEM
     listen (3.9.0)
       rb-fsevent (~> 0.10, >= 0.10.3)
       rb-inotify (~> 0.9, >= 0.9.10)
-    logger (1.6.6)
+    logger (1.7.0)
     lumberjack (1.2.10)
     method_source (1.1.0)
     mqtt (0.6.0)
@@ -58,10 +58,11 @@ GEM
       nenv (~> 0.1)
       shellany (~> 0.0)
     ostruct (0.6.1)
-    parallel (1.26.3)
-    parser (3.3.7.1)
+    parallel (1.27.0)
+    parser (3.3.8.0)
       ast (~> 2.4.1)
       racc
+    prism (1.4.0)
     pry (0.15.2)
       coderay (~> 1.1)
       method_source (~> 1.0)
@@ -87,7 +88,7 @@ GEM
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
     rspec-support (3.13.2)
-    rubocop (1.73.2)
+    rubocop (1.75.2)
       json (~> 2.3)
       language_server-protocol (~> 3.17.0.2)
       lint_roller (~> 1.1.0)
@@ -95,19 +96,20 @@ GEM
       parser (>= 3.3.0.2)
       rainbow (>= 2.2.2, < 4.0)
       regexp_parser (>= 2.9.3, < 3.0)
-      rubocop-ast (>= 1.38.0, < 2.0)
+      rubocop-ast (>= 1.44.0, < 2.0)
       ruby-progressbar (~> 1.7)
       unicode-display_width (>= 2.4.0, < 4.0)
-    rubocop-ast (1.38.1)
-      parser (>= 3.3.1.0)
-    rubocop-performance (1.24.0)
+    rubocop-ast (1.44.1)
+      parser (>= 3.3.7.2)
+      prism (~> 1.4)
+    rubocop-performance (1.25.0)
       lint_roller (~> 1.1)
-      rubocop (>= 1.72.1, < 2.0)
+      rubocop (>= 1.75.0, < 2.0)
       rubocop-ast (>= 1.38.0, < 2.0)
     rubocop-rake (0.7.1)
       lint_roller (~> 1.1)
       rubocop (>= 1.72.1)
-    rubocop-rspec (3.5.0)
+    rubocop-rspec (3.6.0)
       lint_roller (~> 1.1)
       rubocop (~> 1.72, >= 1.72.1)
     ruby-progressbar (1.13.0)
@@ -124,7 +126,7 @@ GEM
     unicode-emoji (4.0.4)
     vcr (6.3.1)
       base64
-    webmock (3.25.0)
+    webmock (3.25.1)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
@@ -155,4 +157,4 @@ DEPENDENCIES
   webmock
 
 BUNDLED WITH
-   2.6.5
+   2.6.8
