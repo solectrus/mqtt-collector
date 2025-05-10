@@ -41,7 +41,7 @@ class Mapper
     mappings
       .map do |mapping|
         value = value_from(message, mapping)
-        if signed?(mapping)
+        if value && signed?(mapping)
           map_with_sign(mapping, value)
         else
           map_default(mapping, value)
