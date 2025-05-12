@@ -16,7 +16,7 @@ GEM
     dentaku (3.5.4)
       bigdecimal
       concurrent-ruby
-    diff-lcs (1.6.1)
+    diff-lcs (1.6.2)
     docile (1.4.1)
     dotenv (3.1.8)
     ffi (1.17.2)
