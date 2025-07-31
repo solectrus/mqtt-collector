@@ -5,6 +5,7 @@ require 'mapper'
 
 class Loop
   extend Forwardable
+
   def_delegators :config, :logger
 
   def initialize(config:, retry_wait: 5, max_count: nil)

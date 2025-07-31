@@ -344,6 +344,14 @@ describe Mapper do
     expect(hash).to all(include(value: a_kind_of(Integer)))
   end
 
+  it 'ignores missing value for mappings with sign handling' do
+    hash = mapper.records_for('senec/0/ENERGY/GUI_GRID_POW', '')
+
+    expect(hash).to eq(
+      [],
+    )
+  end
+
   it 'maps current_state' do
     hash = mapper.records_for('senec/0/ENERGY/STAT_STATE_Text', 'LOADING')
 

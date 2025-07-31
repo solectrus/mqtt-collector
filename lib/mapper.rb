@@ -41,7 +41,7 @@ class Mapper
     mappings
       .map do |mapping|
         value = value_from(message, mapping)
-        if signed?(mapping)
+        if value && signed?(mapping)
           map_with_sign(mapping, value)
         else
           map_default(mapping, value)
@@ -123,7 +123,7 @@ class Mapper
     )
   end
 
-  def convert_boolean(message, _mapping)
+  def convert_boolean(message, _mapping) # rubocop:disable Naming/PredicateMethod
     %w[true ok yes on 1].include?(message.to_s.downcase)
   end
 
