@@ -20,7 +20,7 @@ GEM
     docile (1.4.1)
     dotenv (3.1.8)
     ffi (1.17.2)
-    formatador (1.2.0)
+    formatador (1.2.1)
       reline
     guard (2.19.1)
       formatador (>= 0.2.4)
