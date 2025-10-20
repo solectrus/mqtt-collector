@@ -13,7 +13,7 @@ GEM
       bigdecimal
       rexml
     csv (3.3.5)
-    dentaku (3.5.5)
+    dentaku (3.5.6)
       bigdecimal
       concurrent-ruby
     diff-lcs (1.6.2)
