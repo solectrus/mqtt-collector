@@ -87,7 +87,7 @@ describe Evaluator do
     end
   end
 
-  context 'with invalid expression (missing curley braces)' do
+  context 'with invalid expression (missing curly braces)' do
     let(:expression) { '(a + b) / 2' }
     let(:data) { { 'a' => 2, 'b' => 5 } }
 
@@ -96,7 +96,7 @@ describe Evaluator do
     end
   end
 
-  context 'with invalid expression (open curley braces)' do
+  context 'with invalid expression (open curly braces)' do
     let(:expression) { '({a} + {b) / 2' }
     let(:data) { { 'a' => 2, 'b' => 5 } }
 
