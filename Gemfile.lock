@@ -18,7 +18,7 @@ GEM
       concurrent-ruby
     diff-lcs (1.6.2)
     docile (1.4.1)
-    dotenv (3.1.8)
+    dotenv (3.2.0)
     ffi (1.17.2)
     formatador (1.2.3)
       reline
