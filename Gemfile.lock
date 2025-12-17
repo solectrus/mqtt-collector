@@ -6,14 +6,14 @@ GEM
     amazing_print (2.0.0)
     ast (2.4.3)
     base64 (0.3.0)
-    bigdecimal (3.3.1)
+    bigdecimal (4.0.0)
     coderay (1.1.3)
     concurrent-ruby (1.3.6)
     crack (1.0.1)
       bigdecimal
       rexml
     csv (3.3.5)
-    dentaku (3.5.6)
+    dentaku (3.5.7)
       bigdecimal
       concurrent-ruby
     diff-lcs (1.6.2)
