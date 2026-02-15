@@ -24,6 +24,9 @@ gem 'ostruct'
 # A formula language parser and evaluator (http://github.com/rubysolo/dentaku)
 gem 'dentaku'
 
+# Topological sorting using Tarjan's algorithm (https://github.com/ruby/tsort)
+gem 'tsort'
+
 # Ruby implementation of http://goessner.net/articles/JsonPath/ (https://github.com/joshbuddy/jsonpath)
 gem 'jsonpath'
 
