@@ -514,11 +514,11 @@ describe Config do
       [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
        'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
     ].each do |method_name, argument, error_message|
-      it "raises a ConfigError ('#{error_message}')" do
+      it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)
 
         expect { described_class.new(env) }.to raise_error(
-          ConfigError,
+          Config::Error,
         ).with_message(error_message)
       end
     end

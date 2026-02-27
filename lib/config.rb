@@ -22,13 +22,11 @@ DEPRECATED_ENV = {
   'MQTT_TOPIC_HEATPUMP_POWER' => %w[heatpump_power integer],
 }.freeze
 
-class ConfigError < StandardError
-  def backtrace
-    []
-  end
-end
-
 class Config
+  class Error < StandardError
+    def backtrace = []
+  end
+
   attr_accessor :mqtt_host,
                 :mqtt_port,
                 :mqtt_username,
@@ -218,15 +216,15 @@ class Config
 
     if present
       if mapping[key].nil? || mapping[key].strip == ''
-        raise ConfigError, "Missing variable: #{var}"
+        raise Config::Error, "Missing variable: #{var}"
       end
 
       if allow_list && !allow_list.include?(mapping[key])
-        raise ConfigError,
+        raise Config::Error,
               "Variable #{var} is invalid: #{mapping[key]}. Must be one of: #{allow_list.join(', ')}"
       end
     elsif mapping[key]
-      raise ConfigError, "Unexpected variable: #{var}"
+      raise Config::Error, "Unexpected variable: #{var}"
     end
   end
 end
