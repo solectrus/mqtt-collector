@@ -89,7 +89,7 @@ describe Config, '#mapping' do
       let(:env) { other_env.merge(hash) }
 
       it 'raises an error' do
-        expect { config }.to raise_error(ConfigError)
+        expect { config }.to raise_error(Config::Error)
       end
     end
   end
