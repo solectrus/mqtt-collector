@@ -149,6 +149,12 @@ VALID_ENV = {
   'MAPPING_23_MEASUREMENT' => 'Consumer',
   'MAPPING_23_FIELD' => 'power',
   'MAPPING_23_TYPE' => 'float',
+  #
+  'MAPPING_24_TOPIC' => 'somewhere/power-negative',
+  'MAPPING_24_FORMULA' => 'abs({value})',
+  'MAPPING_24_MEASUREMENT' => 'PV',
+  'MAPPING_24_FIELD' => 'inverter_power',
+  'MAPPING_24_TYPE' => 'integer',
 }.freeze
 
 EXPECTED_TOPICS = %w[
@@ -172,6 +178,7 @@ EXPECTED_TOPICS = %w[
   somewhere/HEATPUMP/POWER
   somewhere/STAT_STATE_OK
   somewhere/power-kwh
+  somewhere/power-negative
 ].freeze
 
 describe Mapper do
@@ -435,6 +442,16 @@ describe Mapper do
     expect(hash).to eq(
       [
         { measurement: 'Consumer', field: 'power', value: 123_450 },
+      ],
+    )
+  end
+
+  it 'maps plain negative value with abs() formula' do
+    hash = mapper.records_for('somewhere/power-negative', '-500')
+
+    expect(hash).to eq(
+      [
+        { measurement: 'PV', field: 'inverter_power', value: 500 },
       ],
     )
   end
