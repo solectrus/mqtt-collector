@@ -9,11 +9,12 @@ require 'dotenv/load'
 require 'loop'
 require 'config'
 require 'stdout_logger'
+require 'app_version'
 
 logger = StdoutLogger.new
 
 logger.info 'MQTT collector for SOLECTRUS, ' \
-              "Version #{ENV.fetch('VERSION', '<unknown>')}, " \
+              "Version #{AppVersion.current || '<unknown>'}, " \
               "built at #{ENV.fetch('BUILDTIME', '<unknown>')}"
 logger.info 'https://github.com/solectrus/mqtt-collector'
 logger.info 'Copyright (c) 2023-2026 Georg Ledermann and contributors, released under the MIT License'
