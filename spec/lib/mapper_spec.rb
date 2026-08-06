@@ -181,6 +181,49 @@ EXPECTED_TOPICS = %w[
   somewhere/power-negative
 ].freeze
 
+VIRTUAL_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'inverter_power',
+  'MAPPING_0_TYPE' => 'integer',
+  #
+  'MAPPING_1_TOPIC' => 'senec/0/ENERGY/GUI_HOUSE_POW',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'house_power',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'total_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Virtual mapping: no topic, referencing a mapping that never receives data
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'missing_ref',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NULL_TO_ZERO' => 'true',
+  'MAPPING_3_FORMULA' => '{MAPPING_99}',
+  #
+  # Virtual mapping: no topic, with positive/negative fields
+  'MAPPING_4_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_4_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_4_FIELD_POSITIVE' => 'net_power_plus',
+  'MAPPING_4_FIELD_NEGATIVE' => 'net_power_minus',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{MAPPING_0} - {MAPPING_1}',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -516,5 +559,77 @@ describe Mapper do
     expect do
       mapper.records_for('this/is/an/unknown/topic', 'foo!')
     end.to raise_error(RuntimeError)
+  end
+
+  context 'with virtual mappings' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(VIRTUAL_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not subscribe to a topic for virtual mappings' do
+      expect(mapper.topics).to eq(
+        %w[
+          senec/0/ENERGY/GUI_HOUSE_POW
+          senec/0/ENERGY/GUI_INVERTER_POWER
+        ],
+      )
+    end
+
+    it 'lists virtual mappings' do
+      expect(mapper.virtual_mappings.map { |mapping| mapping[:mapping_group] }).to eq(
+        %w[2 3 4],
+      )
+    end
+
+    it 'formats a virtual mapping including its formula' do
+      expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[0])).to eq(
+        'PV:total_power (integer) = {MAPPING_0} + {MAPPING_1}',
+      )
+
+      expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[2])).to eq(
+        'PV:net_power_plus (+) PV:net_power_minus (-) (integer) = {MAPPING_0} - {MAPPING_1}',
+      )
+    end
+
+    it 'ignores the virtual mapping until all referenced values are known' do
+      hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '1000')
+
+      expect(hash).to eq(
+        [
+          { field: 'inverter_power', measurement: 'PV', value: 1000 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+        ],
+      )
+      expect(logger.warn_messages).to include(/Formula for total_power/)
+      expect(logger.warn_messages).to include(/Formula for net_power_plus/)
+    end
+
+    it 'calculates the virtual mapping once all referenced values are known, and keeps it updated' do
+      mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '1000')
+
+      hash = mapper.records_for('senec/0/ENERGY/GUI_HOUSE_POW', '600')
+      expect(hash).to eq(
+        [
+          { field: 'house_power', measurement: 'PV', value: 600 },
+          { field: 'total_power', measurement: 'PV', value: 1600 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+          { field: 'net_power_minus', measurement: 'PV', value: 0 },
+          { field: 'net_power_plus', measurement: 'PV', value: 400 },
+        ],
+      )
+
+      # A later update of just one referenced mapping recalculates the virtual mapping
+      hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '2000')
+      expect(hash).to eq(
+        [
+          { field: 'inverter_power', measurement: 'PV', value: 2000 },
+          { field: 'total_power', measurement: 'PV', value: 2600 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+          { field: 'net_power_minus', measurement: 'PV', value: 0 },
+          { field: 'net_power_plus', measurement: 'PV', value: 1400 },
+        ],
+      )
+    end
   end
 end
