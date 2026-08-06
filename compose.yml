@@ -2,7 +2,7 @@ version: '3.4'
 
 services:
   mqtt-collector:
-    image: ghcr.io/solectrus/mqtt-collector:latest
+    image: ghcr.io/patricknitsch/mqtt-collector:claude-collector-mehrwertberechnung-s8ntzo
     build:
       context: .
       dockerfile: Dockerfile
