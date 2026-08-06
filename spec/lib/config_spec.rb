@@ -483,7 +483,8 @@ describe Config do
   describe 'invalid mappings' do
     [
       # Missing keys (for a simple mapping)
-      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_TOPIC'],
+      # Without a topic, the mapping is considered virtual and requires a formula instead
+      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_FORMULA'],
       [:except, 'MAPPING_0_FIELD', 'Missing variable: MAPPING_0_FIELD'],
       [:except, 'MAPPING_0_MEASUREMENT', 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:except, 'MAPPING_0_TYPE', 'Missing variable: MAPPING_0_TYPE'],
@@ -493,7 +494,8 @@ describe Config do
       [:except, 'MAPPING_4_MEASUREMENT_POSITIVE', 'Missing variable: MAPPING_4_MEASUREMENT_POSITIVE'],
       [:except, 'MAPPING_4_MEASUREMENT_NEGATIVE', 'Missing variable: MAPPING_4_MEASUREMENT_NEGATIVE'],
       # Blank keys (for a simple mapping)
-      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_TOPIC'],
+      # A blank topic is treated the same as a missing one (virtual mapping)
+      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_FORMULA'],
       [:merge, { 'MAPPING_0_FIELD' => '' }, 'Missing variable: MAPPING_0_FIELD'],
       [:merge, { 'MAPPING_0_MEASUREMENT' => '' }, 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:merge, { 'MAPPING_0_TYPE' => '' }, 'Missing variable: MAPPING_0_TYPE'],
