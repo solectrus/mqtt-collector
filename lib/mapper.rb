@@ -8,28 +8,20 @@ class Mapper
   attr_reader :config
 
   def topics
-    @topics ||= config.mappings.map { |mapping| mapping[:topic] }.sort.uniq
+    @topics ||=
+      config.mappings.filter_map { |mapping| mapping[:topic] }.sort.uniq
   end
 
   def formatted_mapping(topic)
-    mappings_for(topic)
-      .map do |mapping|
-        result =
-          if signed?(mapping)
-            "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-              "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-          else
-            "#{mapping[:measurement]}:#{mapping[:field]}"
-          end
+    mappings_for(topic).map { |mapping| describe_mapping(mapping) }.join(', ')
+  end
 
-        result += ' (' \
-                  "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
-                  "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
-                  "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
-                  ')'
-        result
-      end
-      .join(', ')
+  def formatted_virtual_mapping(mapping)
+    "#{describe_mapping(mapping)} = #{mapping[:formula]}"
+  end
+
+  def virtual_mappings
+    config.mappings.select { |mapping| mapping[:topic].nil? }
   end
 
   def records_for(topic, message)
@@ -38,20 +30,80 @@ class Mapper
     mappings = mappings_for(topic)
     raise "Unknown mapping for topic: #{topic}" if mappings.empty?
 
-    mappings
-      .map do |mapping|
-        value = value_from(message, mapping)
-        if value && signed?(mapping)
-          map_with_sign(mapping, value)
-        else
-          map_default(mapping, value)
-        end
-      end
+    records = mappings.map { |mapping| records_for_mapping(mapping, message) }
+
+    (records + virtual_records)
       .flatten
       .delete_if { |record| record[:value].nil? }
   end
 
   private
+
+  def describe_mapping(mapping)
+    result =
+      if signed?(mapping)
+        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+      else
+        "#{mapping[:measurement]}:#{mapping[:field]}"
+      end
+
+    result + ' (' \
+             "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
+             "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
+             "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
+             ')'
+  end
+
+  def records_for_mapping(mapping, message)
+    value = value_from(message, mapping)
+    remember_value(mapping, value)
+
+    if value && signed?(mapping)
+      map_with_sign(mapping, value)
+    else
+      map_default(mapping, value)
+    end
+  end
+
+  # Recalculate all virtual mappings, since any of them might reference a
+  # value that just changed.
+  def virtual_records
+    virtual_mappings.map do |mapping|
+      value = virtual_value_from(mapping)
+      remember_value(mapping, value)
+
+      if value && signed?(mapping)
+        map_with_sign(mapping, value)
+      else
+        map_default(mapping, value)
+      end
+    end
+  end
+
+  def virtual_value_from(mapping)
+    message = Evaluator.new(expression: mapping[:formula], data: last_values).run
+
+    if message.nil? && mapping[:null_to_zero] != 'true'
+      config.logger.warn "  Formula for #{mapping[:field] || mapping[:field_positive]} " \
+                          'could not be evaluated (missing values), ignoring.'
+      return
+    end
+
+    convert_type(message, mapping)
+  end
+
+  # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), so
+  # virtual mappings can reference it via a placeholder like "{MAPPING_1}".
+  def remember_value(mapping, value)
+    return if value.nil?
+
+    last_values["MAPPING_#{mapping[:mapping_group]}"] = value
+  end
+
+  def last_values
+    @last_values ||= {}
+  end
 
   def signed?(mapping)
     (
