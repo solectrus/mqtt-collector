@@ -1,3 +1,5 @@
+require 'bigdecimal'
+
 class Evaluator
   attr_reader :expression, :data
 
@@ -28,11 +30,21 @@ class Evaluator
   end
 
   def value(variable)
-    if variable.start_with?('$.')
-      JsonPath.new(variable).first(data)
-    else
-      data[variable]
-    end
+    raw =
+      if variable.start_with?('$.')
+        JsonPath.new(variable).first(data)
+      else
+        data[variable]
+      end
+
+    precise(raw)
+  end
+
+  # Dentaku parses numeric literals as BigDecimal, but leaves injected values
+  # untouched. Mixing both would make Float rounding errors leak into the
+  # result (e.g. 35.2 - 20.5 => 14.700000000000003), so convert to BigDecimal.
+  def precise(value)
+    value.is_a?(Float) ? BigDecimal(value.to_s) : value
   end
 
   # Replace all variables by their normalized version

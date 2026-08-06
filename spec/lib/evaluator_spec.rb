@@ -30,6 +30,15 @@ describe Evaluator do
     end
   end
 
+  context 'with float values that are not exactly representable' do
+    let(:expression) { '{a} - {b}' }
+    let(:data) { { 'a' => 35.2, 'b' => 20.5 } }
+
+    it 'evaluates without rounding errors' do
+      expect(evaluator.run.to_f).to eq(14.7)
+    end
+  end
+
   context 'with valid expression using vars with spaces' do
     let(:expression) { '({this is a} + {this is b}) / 2' }
     let(:data) { { 'this is a' => 2, 'this is b' => 5 } }
