@@ -85,12 +85,89 @@ describe Config, '#mapping' do
         MAPPING_0_MEASUREMENT: 'measurement',
         MAPPING_1_FIELD: 'field',
       },
+      # Virtual mapping (no topic) is missing the formula
+      {
+        MAPPING_0_MEASUREMENT: 'measurement',
+        MAPPING_0_FIELD: 'field',
+        MAPPING_0_TYPE: 'float',
+      },
+      # Virtual mapping (no topic) cannot use JSON_KEY
+      {
+        MAPPING_0_MEASUREMENT: 'measurement',
+        MAPPING_0_FIELD: 'field',
+        MAPPING_0_TYPE: 'float',
+        MAPPING_0_FORMULA: '{MAPPING_1}',
+        MAPPING_0_JSON_KEY: 'key',
+      },
     ].each do |hash|
       let(:env) { other_env.merge(hash) }
 
       it 'raises an error' do
         expect { config }.to raise_error(Config::Error)
       end
+    end
+  end
+
+  context 'with valid virtual mapping env (no topic, calculated from other mappings)' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_MEASUREMENT' => 'PV',
+          'MAPPING_0_FIELD' => 'inverter_power',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_1_MEASUREMENT' => 'PV',
+          'MAPPING_1_FIELD' => 'inverter_power_doubled',
+          'MAPPING_1_TYPE' => 'integer',
+          'MAPPING_1_FORMULA' => '{MAPPING_0} * 2',
+        },
+      )
+    end
+
+    it 'returns mappings as array, including the virtual one without a topic' do
+      expect(mappings).to eq(
+        [
+          {
+            topic: 'senec/0/ENERGY/GUI_INVERTER_POWER',
+            measurement: 'PV',
+            field: 'inverter_power',
+            type: 'integer',
+            mapping_group: '0',
+          },
+          {
+            measurement: 'PV',
+            field: 'inverter_power_doubled',
+            type: 'integer',
+            formula: '{MAPPING_0} * 2',
+            mapping_group: '1',
+          },
+        ],
+      )
+    end
+  end
+
+  context 'with a SKIP_WRITE mapping that omits FIELD and MEASUREMENT' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_SKIP_WRITE' => 'true',
+        },
+      )
+    end
+
+    it 'does not raise, since the value is never written to InfluxDB' do
+      expect(mappings).to eq(
+        [
+          {
+            topic: 'senec/0/ENERGY/GUI_INVERTER_POWER',
+            type: 'integer',
+            skip_write: 'true',
+            mapping_group: '0',
+          },
+        ],
+      )
     end
   end
 end

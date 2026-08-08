@@ -183,31 +183,58 @@ class Config
 
   def validate_mappings!
     mappings.each_with_index do |mapping, index|
-      validate_mapping!(index, :topic)
+      if virtual_mapping?(mapping)
+        validate_mapping!(index, :formula)
+        validate_mapping!(index, :json_key, present: false)
+        validate_mapping!(index, :json_path, present: false)
+        validate_mapping!(index, :json_formula, present: false)
+      else
+        validate_mapping!(index, :topic)
+      end
+
       validate_mapping!(index, :type, allow_list: MAPPING_TYPES)
 
       if mapping[:null_to_zero]
         validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
       end
 
-      if mapping[:field_positive] || mapping[:field_negative]
-        validate_mapping!(index, :field_positive)
-        validate_mapping!(index, :field_negative)
-        validate_mapping!(index, :measurement_positive)
-        validate_mapping!(index, :measurement_negative)
-
-        validate_mapping!(index, :field, present: false)
-        validate_mapping!(index, :measurement, present: false)
-      else
-        validate_mapping!(index, :field)
-        validate_mapping!(index, :measurement)
-
-        validate_mapping!(index, :field_negative, present: false)
-        validate_mapping!(index, :field_positive, present: false)
-        validate_mapping!(index, :measurement_positive, present: false)
-        validate_mapping!(index, :measurement_negative, present: false)
+      if mapping[:skip_write]
+        validate_mapping!(index, :skip_write, allow_list: %w[true false])
       end
+
+      if mapping[:dedup]
+        validate_mapping!(index, :dedup, allow_list: %w[true false])
+      end
+
+      validate_destination!(mapping, index)
     end
+  end
+
+  # A mapping that's never written to InfluxDB doesn't need a destination
+  def validate_destination!(mapping, index)
+    return if mapping[:skip_write] == 'true'
+
+    if mapping[:field_positive] || mapping[:field_negative]
+      validate_mapping!(index, :field_positive)
+      validate_mapping!(index, :field_negative)
+      validate_mapping!(index, :measurement_positive)
+      validate_mapping!(index, :measurement_negative)
+
+      validate_mapping!(index, :field, present: false)
+      validate_mapping!(index, :measurement, present: false)
+    else
+      validate_mapping!(index, :field)
+      validate_mapping!(index, :measurement)
+
+      validate_mapping!(index, :field_negative, present: false)
+      validate_mapping!(index, :field_positive, present: false)
+      validate_mapping!(index, :measurement_positive, present: false)
+      validate_mapping!(index, :measurement_negative, present: false)
+    end
+  end
+
+  def virtual_mapping?(mapping)
+    mapping[:topic].nil? || mapping[:topic].strip == ''
   end
 
   def validate_mapping!(index, key, present: true, allow_list: nil)

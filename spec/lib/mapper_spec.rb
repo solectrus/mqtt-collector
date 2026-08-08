@@ -181,6 +181,219 @@ EXPECTED_TOPICS = %w[
   somewhere/power-negative
 ].freeze
 
+VIRTUAL_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'inverter_power',
+  'MAPPING_0_TYPE' => 'integer',
+  #
+  'MAPPING_1_TOPIC' => 'senec/0/ENERGY/GUI_HOUSE_POW',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'house_power',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'total_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Virtual mapping: no topic, referencing a mapping that never receives data
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'missing_ref',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NULL_TO_ZERO' => 'true',
+  'MAPPING_3_FORMULA' => '{MAPPING_99}',
+  #
+  # Virtual mapping: no topic, with positive/negative fields
+  'MAPPING_4_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_4_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_4_FIELD_POSITIVE' => 'net_power_plus',
+  'MAPPING_4_FIELD_NEGATIVE' => 'net_power_minus',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{MAPPING_0} - {MAPPING_1}',
+}.freeze
+
+MAX_AGE_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_MAX_AGE' => '30',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/other',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'other',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'shadow_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Unrelated topic, only used to trigger a virtual mapping recalculation
+  'MAPPING_3_TOPIC' => 'sensor/decoy',
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'decoy',
+  'MAPPING_3_TYPE' => 'integer',
+}.freeze
+
+LOGIC_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/x',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'x',
+  'MAPPING_0_TYPE' => 'integer',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/y',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'y',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, uses IF() with a comparison across mappings
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'different',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => 'IF({MAPPING_0} != {MAPPING_1}, {MAPPING_0}, 0)',
+}.freeze
+
+AGGREGATE_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/fast',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'fast_value',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_AGGREGATE_INTERVAL' => '5',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/plain',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'plain_value',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/signed',
+  'MAPPING_2_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_2_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_2_FIELD_POSITIVE' => 'signed_plus',
+  'MAPPING_2_FIELD_NEGATIVE' => 'signed_minus',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_AGGREGATE_INTERVAL' => '5',
+}.freeze
+
+SKIP_WRITE_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/washer',
+  'MAPPING_0_MEASUREMENT' => 'Washer',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_SKIP_WRITE' => 'true',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/dryer',
+  'MAPPING_1_MEASUREMENT' => 'Dryer',
+  'MAPPING_1_FIELD' => 'power',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, calculated from MAPPING_0 (skipped) and MAPPING_1 (written)
+  'MAPPING_2_MEASUREMENT' => 'Household',
+  'MAPPING_2_FIELD' => 'total_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Skipped mapping without FIELD/MEASUREMENT at all - only feeds MAPPING_2
+  'MAPPING_3_TOPIC' => 'sensor/heatpump',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_SKIP_WRITE' => 'true',
+}.freeze
+
+DEDUP_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_DEDUP' => 'true',
+  'MAPPING_0_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/grid',
+  'MAPPING_1_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_1_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_1_FIELD_POSITIVE' => 'grid_import',
+  'MAPPING_1_FIELD_NEGATIVE' => 'grid_export',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_DEDUP' => 'true',
+  'MAPPING_1_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/leak',
+  'MAPPING_2_MEASUREMENT' => 'Leak',
+  'MAPPING_2_FIELD' => 'detected',
+  'MAPPING_2_TYPE' => 'boolean',
+  'MAPPING_2_DEDUP' => 'true',
+  'MAPPING_2_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_3_TOPIC' => 'sensor/status',
+  'MAPPING_3_MEASUREMENT' => 'System',
+  'MAPPING_3_FIELD' => 'status',
+  'MAPPING_3_TYPE' => 'string',
+  'MAPPING_3_DEDUP' => 'true',
+  'MAPPING_3_HEARTBEAT_INTERVAL' => '60',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -516,5 +729,422 @@ describe Mapper do
     expect do
       mapper.records_for('this/is/an/unknown/topic', 'foo!')
     end.to raise_error(RuntimeError)
+  end
+
+  context 'with virtual mappings' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(VIRTUAL_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not subscribe to a topic for virtual mappings' do
+      expect(mapper.topics).to eq(
+        %w[
+          senec/0/ENERGY/GUI_HOUSE_POW
+          senec/0/ENERGY/GUI_INVERTER_POWER
+        ],
+      )
+    end
+
+    it 'lists virtual mappings' do
+      expect(mapper.virtual_mappings.map { |mapping| mapping[:mapping_group] }).to eq(
+        %w[2 3 4],
+      )
+    end
+
+    it 'formats a virtual mapping including its formula' do
+      expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[0])).to eq(
+        'PV:total_power (integer) = {MAPPING_0} + {MAPPING_1}',
+      )
+
+      expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[2])).to eq(
+        'PV:net_power_plus (+) PV:net_power_minus (-) (integer) = {MAPPING_0} - {MAPPING_1}',
+      )
+    end
+
+    it 'ignores the virtual mapping until all referenced values are known' do
+      hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '1000')
+
+      expect(hash).to eq(
+        [
+          { field: 'inverter_power', measurement: 'PV', value: 1000 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+        ],
+      )
+      expect(logger.warn_messages).to include(/Formula for total_power/)
+      expect(logger.warn_messages).to include(/Formula for net_power_plus/)
+    end
+
+    it 'calculates the virtual mapping once all referenced values are known, and keeps it updated' do
+      mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '1000')
+
+      hash = mapper.records_for('senec/0/ENERGY/GUI_HOUSE_POW', '600')
+      expect(hash).to eq(
+        [
+          { field: 'house_power', measurement: 'PV', value: 600 },
+          { field: 'total_power', measurement: 'PV', value: 1600 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+          { field: 'net_power_minus', measurement: 'PV', value: 0 },
+          { field: 'net_power_plus', measurement: 'PV', value: 400 },
+        ],
+      )
+
+      # A later update of just one referenced mapping recalculates the virtual mapping
+      hash = mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '2000')
+      expect(hash).to eq(
+        [
+          { field: 'inverter_power', measurement: 'PV', value: 2000 },
+          { field: 'total_power', measurement: 'PV', value: 2600 },
+          { field: 'missing_ref', measurement: 'PV', value: 0 },
+          { field: 'net_power_minus', measurement: 'PV', value: 0 },
+          { field: 'net_power_plus', measurement: 'PV', value: 1400 },
+        ],
+      )
+    end
+  end
+
+  context 'with MAPPING_X_MAX_AGE' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(MAX_AGE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'still uses a value within MAX_AGE' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      # 10 seconds later - still within MAX_AGE of 30 seconds
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1010.0)
+      hash = mapper.records_for('sensor/other', '5')
+
+      expect(hash).to eq(
+        [
+          { field: 'other', measurement: 'PV', value: 5 },
+          { field: 'shadow_power', measurement: 'PV', value: 105 },
+        ],
+      )
+    end
+
+    it 'ignores a value beyond MAX_AGE, as if it was never received' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      # 31 seconds later - beyond MAX_AGE of 30 seconds
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+      hash = mapper.records_for('sensor/other', '5')
+
+      expect(hash).to eq(
+        [{ field: 'other', measurement: 'PV', value: 5 }],
+      )
+      expect(logger.warn_messages).to include(
+        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: last received 31s ago},
+      )
+      expect(logger.warn_messages).to include(/exceeds MAX_AGE of 30s/)
+    end
+
+    it 'names all missing or outdated references, not just the first one' do
+      # Neither MAPPING_0 nor MAPPING_1 has ever received a value
+      hash = mapper.records_for('sensor/decoy', '1')
+
+      expect(hash).to eq(
+        [{ field: 'decoy', measurement: 'PV', value: 1 }],
+      )
+      expect(logger.warn_messages).to include(
+        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: never received.*MAPPING_1 \[sensor/other\]: never received},
+      )
+    end
+  end
+
+  context 'with a comparison operator (==, !=) in a virtual mapping formula' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(LOGIC_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not calculate the result before both sides are known' do
+      hash = mapper.records_for('sensor/x', '10')
+
+      expect(hash).to eq([{ field: 'x', measurement: 'PV', value: 10 }])
+    end
+
+    it 'returns 0 (the "else" branch) once both sides are known and equal' do
+      mapper.records_for('sensor/x', '10')
+      hash = mapper.records_for('sensor/y', '10')
+
+      expect(hash).to eq(
+        [
+          { field: 'y', measurement: 'PV', value: 10 },
+          { field: 'different', measurement: 'PV', value: 0 },
+        ],
+      )
+    end
+
+    it 'returns the mapping value (the "then" branch) once both sides differ' do
+      mapper.records_for('sensor/x', '10')
+      mapper.records_for('sensor/y', '10')
+      hash = mapper.records_for('sensor/x', '20')
+
+      expect(hash).to eq(
+        [
+          { field: 'x', measurement: 'PV', value: 20 },
+          { field: 'different', measurement: 'PV', value: 20 },
+        ],
+      )
+    end
+  end
+
+  context 'with MAPPING_X_AGGREGATE_INTERVAL' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(AGGREGATE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'does not affect a mapping without AGGREGATE_INTERVAL' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/plain', '42')
+
+      expect(hash).to eq([{ field: 'plain_value', measurement: 'PV', value: 42 }])
+    end
+
+    it 'collects values without writing anything until the interval elapses' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/fast', '10')
+      expect(hash).to eq([])
+
+      at(1002.0) # 2s later - still within the 5s window
+      hash = mapper.records_for('sensor/fast', '20')
+      expect(hash).to eq([])
+    end
+
+    it 'writes the average of all collected values once the interval elapses' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1002.0)
+      mapper.records_for('sensor/fast', '20')
+
+      at(1006.0) # 6s after the window started - beyond the 5s interval
+      hash = mapper.records_for('sensor/fast', '30')
+
+      # average of 10, 20, 30 == 20
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 20 }])
+    end
+
+    it 'starts a fresh window after flushing, instead of carrying over old values' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1006.0)
+      mapper.records_for('sensor/fast', '20') # flushes average of [10, 20] == 15
+
+      at(1007.0) # new window just started - not yet due
+      hash = mapper.records_for('sensor/fast', '100')
+      expect(hash).to eq([])
+
+      at(1012.0) # 5s into the new window
+      hash = mapper.records_for('sensor/fast', '200')
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 150 }])
+    end
+
+    it 'applies the aggregation before splitting into positive/negative fields' do
+      at(1000.0)
+      mapper.records_for('sensor/signed', '-10')
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/signed', '30')
+
+      # average of -10 and 30 == 10 (positive)
+      expect(hash).to eq(
+        [
+          { field: 'signed_minus', measurement: 'PV', value: 0 },
+          { field: 'signed_plus', measurement: 'PV', value: 10 },
+        ],
+      )
+    end
+  end
+
+  context 'with MAPPING_X_SKIP_WRITE' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(SKIP_WRITE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not write the skipped mapping, but still writes a regular one' do
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'Dryer', value: 500 }])
+    end
+
+    it 'never writes the skipped mapping, even alone on its own topic' do
+      hash = mapper.records_for('sensor/washer', '300')
+
+      expect(hash).to eq([])
+    end
+
+    it 'still uses the skipped mapping value in a virtual mapping formula' do
+      mapper.records_for('sensor/washer', '300')
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq(
+        [
+          { field: 'power', measurement: 'Dryer', value: 500 },
+          { field: 'total_power', measurement: 'Household', value: 800 },
+        ],
+      )
+    end
+
+    it 'mentions skipped mappings in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/washer')).to eq(
+        'Washer:power (integer, not written to InfluxDB)',
+      )
+      expect(mapper.formatted_mapping('sensor/dryer')).to eq('Dryer:power (integer)')
+    end
+
+    it 'does not require FIELD/MEASUREMENT for a skipped mapping' do
+      hash = mapper.records_for('sensor/heatpump', '42')
+
+      expect(hash).to eq([])
+      expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
+        '(no InfluxDB field) (integer, not written to InfluxDB)',
+      )
+    end
+  end
+
+  context 'with MAPPING_X_DEDUP' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(DEDUP_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'always writes the first value, even if it is zero' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
+    end
+
+    it 'suppresses repeated zeros indefinitely, without a heartbeat' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '0')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([])
+    end
+
+    it 'always writes a value once it actually changes' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1000.1)
+      hash = mapper.records_for('sensor/power', '200')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 200 }])
+    end
+
+    it 'suppresses a repeated non-zero value within the heartbeat interval' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1030.0) # 30s later - within the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([])
+    end
+
+    it 'writes a repeated non-zero value again once the heartbeat interval has passed' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1061.0) # 61s later - beyond the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 100 }])
+    end
+
+    it 'treats each field of a positive/negative mapping independently' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/grid', '100') # import
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 0 },
+          { field: 'grid_import', measurement: 'PV', value: 100 },
+        ],
+      )
+
+      # grid_export stays at 0 (suppressed), grid_import changes - still written
+      at(1000.1)
+      hash = mapper.records_for('sensor/grid', '150')
+      expect(hash).to eq([{ field: 'grid_import', measurement: 'PV', value: 150 }])
+
+      # Now import goes quiet at 0, export becomes non-zero - both change, both written
+      at(1000.2)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 50 },
+          { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
+
+      # grid_import (now 0) and grid_export (still 50) both repeat - suppressed within heartbeat
+      at(1000.3)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq([])
+
+      # Well beyond the heartbeat interval - grid_export (non-zero) is written again,
+      # grid_import stays suppressed since it's zero
+      at(1061.0)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq([{ field: 'grid_export', measurement: 'PV', value: 50 }])
+    end
+
+    it 'mentions dedup and the heartbeat interval in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/power')).to eq(
+        'PV:power (integer, deduplicated (heartbeat 60s))',
+      )
+    end
+
+    it 'treats a repeated "false" boolean like a zero (suppressed indefinitely)' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'false')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/leak', 'false')
+
+      expect(hash).to eq([])
+    end
+
+    it 'still applies the heartbeat to a repeated "true" boolean' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'true')
+
+      at(1061.0)
+      hash = mapper.records_for('sensor/leak', 'true')
+
+      expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: true }])
+    end
+
+    it 'still applies the heartbeat to a repeated string value (no zero-equivalent)' do
+      at(1000.0)
+      mapper.records_for('sensor/status', 'idle')
+
+      at(1030.0) # within the heartbeat interval - suppressed
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([])
+
+      at(1061.0) # beyond the heartbeat interval - written again
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([{ field: 'status', measurement: 'System', value: 'idle' }])
+    end
   end
 end
