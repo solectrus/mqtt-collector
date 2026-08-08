@@ -55,6 +55,7 @@ class Mapper
       ("named '#{mapping[:name]}'" if mapping[:name]),
       ("expiring after #{mapping[:max_age]}s" if mapping[:max_age]),
       ("averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]),
+      ('not written to InfluxDB' if mapping[:skip_write] == 'true'),
     ].compact
 
     "#{result} (#{details.join(', ')})"
@@ -83,6 +84,8 @@ class Mapper
   end
 
   def map_value(mapping, value)
+    return [] if mapping[:skip_write] == 'true'
+
     value = throttled(mapping, value)
 
     if value && signed?(mapping)

@@ -437,6 +437,27 @@ AGGREGATE_ENV = BASE_ENV.merge(
   'MAPPING_2_AGGREGATE_INTERVAL' => '5',
 ).freeze
 
+SKIP_WRITE_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/washer',
+  'MAPPING_0_MEASUREMENT' => 'Washer',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'washer',
+  'MAPPING_0_SKIP_WRITE' => 'true',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/dryer',
+  'MAPPING_1_MEASUREMENT' => 'Dryer',
+  'MAPPING_1_FIELD' => 'power',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'dryer',
+  #
+  # Virtual mapping: no topic, calculated from washer (skipped) and dryer (written)
+  'MAPPING_2_MEASUREMENT' => 'Household',
+  'MAPPING_2_FIELD' => 'total_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{washer} + {dryer}',
+).freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -1234,6 +1255,44 @@ describe Mapper do
           { field: 'signed_plus', measurement: 'PV', value: 10 },
         ],
       )
+    end
+  end
+
+  context 'with MAPPING_X_SKIP_WRITE' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(SKIP_WRITE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not write the skipped mapping, but still writes a regular one' do
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'Dryer', value: 500 }])
+    end
+
+    it 'never writes the skipped mapping, even alone on its own topic' do
+      hash = mapper.records_for('sensor/washer', '300')
+
+      expect(hash).to eq([])
+    end
+
+    it 'still uses the skipped mapping value in a virtual mapping formula' do
+      mapper.records_for('sensor/washer', '300')
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq(
+        [
+          { field: 'power', measurement: 'Dryer', value: 500 },
+          { field: 'total_power', measurement: 'Household', value: 800 },
+        ],
+      )
+    end
+
+    it 'mentions skipped mappings in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/washer')).to eq(
+        "Washer:power (integer, named 'washer', not written to InfluxDB)",
+      )
+      expect(mapper.formatted_mapping('sensor/dryer')).to eq("Dryer:power (integer, named 'dryer')")
     end
   end
 end

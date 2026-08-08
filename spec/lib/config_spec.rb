@@ -571,6 +571,9 @@ describe Config do
                  'MAPPING_21_NAME' => 'doubled', 'MAPPING_21_FORMULA' => '{total} * 2', },
        'Variable MAPPING_21_FORMULA is invalid: {total} closes a cycle: total -> doubled -> total. ' \
        'A formula cannot depend on its own result',],
+      # Invalid skip_write
+      [:merge, { 'MAPPING_0_SKIP_WRITE' => 'this-is-no-boolean' },
+       'Variable MAPPING_0_SKIP_WRITE is invalid: this-is-no-boolean. Must be one of: true, false',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)
