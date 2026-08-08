@@ -202,6 +202,10 @@ class Config
         validate_mapping!(index, :skip_write, allow_list: %w[true false])
       end
 
+      if mapping[:dedup]
+        validate_mapping!(index, :dedup, allow_list: %w[true false])
+      end
+
       validate_destination!(mapping, index)
     end
   end
