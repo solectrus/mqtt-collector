@@ -202,23 +202,30 @@ class Config
         validate_mapping!(index, :skip_write, allow_list: %w[true false])
       end
 
-      if mapping[:field_positive] || mapping[:field_negative]
-        validate_mapping!(index, :field_positive)
-        validate_mapping!(index, :field_negative)
-        validate_mapping!(index, :measurement_positive)
-        validate_mapping!(index, :measurement_negative)
+      validate_destination!(mapping, index)
+    end
+  end
 
-        validate_mapping!(index, :field, present: false)
-        validate_mapping!(index, :measurement, present: false)
-      else
-        validate_mapping!(index, :field)
-        validate_mapping!(index, :measurement)
+  # A mapping that's never written to InfluxDB doesn't need a destination
+  def validate_destination!(mapping, index)
+    return if mapping[:skip_write] == 'true'
 
-        validate_mapping!(index, :field_negative, present: false)
-        validate_mapping!(index, :field_positive, present: false)
-        validate_mapping!(index, :measurement_positive, present: false)
-        validate_mapping!(index, :measurement_negative, present: false)
-      end
+    if mapping[:field_positive] || mapping[:field_negative]
+      validate_mapping!(index, :field_positive)
+      validate_mapping!(index, :field_negative)
+      validate_mapping!(index, :measurement_positive)
+      validate_mapping!(index, :measurement_negative)
+
+      validate_mapping!(index, :field, present: false)
+      validate_mapping!(index, :measurement, present: false)
+    else
+      validate_mapping!(index, :field)
+      validate_mapping!(index, :measurement)
+
+      validate_mapping!(index, :field_negative, present: false)
+      validate_mapping!(index, :field_positive, present: false)
+      validate_mapping!(index, :measurement_positive, present: false)
+      validate_mapping!(index, :measurement_negative, present: false)
     end
   end
 
