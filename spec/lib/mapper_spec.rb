@@ -702,8 +702,9 @@ describe Mapper do
         [{ field: 'other', measurement: 'PV', value: 5 }],
       )
       expect(logger.warn_messages).to include(
-        %r{Formula for shadow_power could not be evaluated \(missing or outdated: MAPPING_0 \[sensor/power\]\)},
+        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: last received 31s ago},
       )
+      expect(logger.warn_messages).to include(/exceeds MAX_AGE of 30s/)
     end
 
     it 'names all missing or outdated references, not just the first one' do
@@ -714,7 +715,7 @@ describe Mapper do
         [{ field: 'decoy', measurement: 'PV', value: 1 }],
       )
       expect(logger.warn_messages).to include(
-        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\].*MAPPING_1 \[sensor/other\]},
+        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: never received.*MAPPING_1 \[sensor/other\]: never received},
       )
     end
   end
