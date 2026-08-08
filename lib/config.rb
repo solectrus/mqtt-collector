@@ -198,6 +198,10 @@ class Config
         validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
       end
 
+      if mapping[:skip_write]
+        validate_mapping!(index, :skip_write, allow_list: %w[true false])
+      end
+
       validate_name!(index)
       validate_max_age!(mapping)
       validate_destination!(mapping, index)
