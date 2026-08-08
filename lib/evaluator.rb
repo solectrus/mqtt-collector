@@ -46,15 +46,24 @@ class Evaluator
   end
 
   def run
-    values =
-      self.class.variables_in(expression).to_h do |variable|
-        [self.class.normalized_variable(variable), value(variable)]
-      end
-
-    Dentaku(self.class.normalized_expression(expression), values)
+    Dentaku(self.class.normalized_expression(expression), bound_values)
   end
 
   private
+
+  # Only bind variables that actually have a value. Dentaku's comparison
+  # operators (==, !=) happily compare against an explicit nil instead of
+  # raising, so a bound-but-nil variable would silently be treated as a real,
+  # distinct value rather than "unknown" - unlike arithmetic operators, which
+  # do raise (and get rescued below into an overall nil result). Leaving the
+  # variable out entirely makes Dentaku treat it as unbound, which errors out
+  # (rescued into nil) consistently for every operator.
+  def bound_values
+    self.class.variables_in(expression).filter_map do |variable|
+      val = value(variable)
+      [self.class.normalized_variable(variable), val] unless val.nil?
+    end.to_h
+  end
 
   def value(variable)
     raw =
