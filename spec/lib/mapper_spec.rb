@@ -351,6 +351,11 @@ SKIP_WRITE_ENV = {
   'MAPPING_2_FIELD' => 'total_power',
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Skipped mapping without FIELD/MEASUREMENT at all - only feeds MAPPING_2
+  'MAPPING_3_TOPIC' => 'sensor/heatpump',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_SKIP_WRITE' => 'true',
 }.freeze
 
 describe Mapper do
@@ -961,6 +966,15 @@ describe Mapper do
         'Washer:power (integer, not written to InfluxDB)',
       )
       expect(mapper.formatted_mapping('sensor/dryer')).to eq('Dryer:power (integer)')
+    end
+
+    it 'does not require FIELD/MEASUREMENT for a skipped mapping' do
+      hash = mapper.records_for('sensor/heatpump', '42')
+
+      expect(hash).to eq([])
+      expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
+        '(no InfluxDB field) (integer, not written to InfluxDB)',
+      )
     end
   end
 end

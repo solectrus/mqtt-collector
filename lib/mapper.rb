@@ -40,15 +40,7 @@ class Mapper
   private
 
   def describe_mapping(mapping)
-    result =
-      if signed?(mapping)
-        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-      else
-        "#{mapping[:measurement]}:#{mapping[:field]}"
-      end
-
-    result + ' (' \
+    mapping_target(mapping) + ' (' \
              "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
              "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
              "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
@@ -56,6 +48,17 @@ class Mapper
              "#{", averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]}" \
              "#{', not written to InfluxDB' if mapping[:skip_write] == 'true'}" \
              ')'
+  end
+
+  def mapping_target(mapping)
+    if signed?(mapping)
+      "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+        "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+    elsif mapping[:measurement] || mapping[:field]
+      "#{mapping[:measurement]}:#{mapping[:field]}"
+    else
+      '(no InfluxDB field)'
+    end
   end
 
   def records_for_mapping(mapping, message)
