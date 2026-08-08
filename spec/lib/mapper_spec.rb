@@ -224,6 +224,35 @@ VIRTUAL_ENV = {
   'MAPPING_4_FORMULA' => '{MAPPING_0} - {MAPPING_1}',
 }.freeze
 
+MAX_AGE_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_MAX_AGE' => '30',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/other',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'other',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'shadow_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -630,6 +659,43 @@ describe Mapper do
           { field: 'net_power_plus', measurement: 'PV', value: 1400 },
         ],
       )
+    end
+  end
+
+  context 'with MAPPING_X_MAX_AGE' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(MAX_AGE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'still uses a value within MAX_AGE' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      # 10 seconds later - still within MAX_AGE of 30 seconds
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1010.0)
+      hash = mapper.records_for('sensor/other', '5')
+
+      expect(hash).to eq(
+        [
+          { field: 'other', measurement: 'PV', value: 5 },
+          { field: 'shadow_power', measurement: 'PV', value: 105 },
+        ],
+      )
+    end
+
+    it 'ignores a value beyond MAX_AGE, as if it was never received' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      # 31 seconds later - beyond MAX_AGE of 30 seconds
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+      hash = mapper.records_for('sensor/other', '5')
+
+      expect(hash).to eq(
+        [{ field: 'other', measurement: 'PV', value: 5 }],
+      )
+      expect(logger.warn_messages).to include(/Formula for shadow_power.*outdated/)
     end
   end
 end

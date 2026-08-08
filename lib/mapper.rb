@@ -82,27 +82,52 @@ class Mapper
   end
 
   def virtual_value_from(mapping)
-    message = Evaluator.new(expression: mapping[:formula], data: last_values).run
+    message = Evaluator.new(expression: mapping[:formula], data: fresh_values).run
 
     if message.nil? && mapping[:null_to_zero] != 'true'
       config.logger.warn "  Formula for #{mapping[:field] || mapping[:field_positive]} " \
-                          'could not be evaluated (missing values), ignoring.'
+                          'could not be evaluated (missing or outdated values), ignoring.'
       return
     end
 
     convert_type(message, mapping)
   end
 
-  # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), so
-  # virtual mappings can reference it via a placeholder like "{MAPPING_1}".
+  # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), along
+  # with the time it was received, so virtual mappings can reference it via a
+  # placeholder like "{MAPPING_1}" - and so it can expire via MAX_AGE.
   def remember_value(mapping, value)
     return if value.nil?
 
-    last_values["MAPPING_#{mapping[:mapping_group]}"] = value
+    last_values[mapping_key(mapping)] = { value:, received_at: monotonic_time }
+  end
+
+  # Values for use in virtual mapping formulas, excluding any mapping whose
+  # last value is older than its own MAPPING_X_MAX_AGE (in seconds), if set.
+  def fresh_values
+    last_values.filter_map do |key, entry|
+      max_age = max_age_by_key[key]
+      next if max_age && (monotonic_time - entry[:received_at]) > max_age
+
+      [key, entry[:value]]
+    end.to_h
+  end
+
+  def max_age_by_key
+    @max_age_by_key ||=
+      config.mappings.to_h { |mapping| [mapping_key(mapping), mapping[:max_age]&.to_f] }
+  end
+
+  def mapping_key(mapping)
+    "MAPPING_#{mapping[:mapping_group]}"
   end
 
   def last_values
     @last_values ||= {}
+  end
+
+  def monotonic_time
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
   def signed?(mapping)
