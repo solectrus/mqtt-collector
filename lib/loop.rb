@@ -8,15 +8,56 @@ class Loop
 
   def_delegators :config, :logger
 
-  def initialize(config:, retry_wait: 5, max_count: nil)
+  def initialize(config:, retry_wait: 5, max_count: nil, max_wait: 12)
     @config = config
     @max_count = max_count
     @retry_wait = retry_wait
+    @max_wait = max_wait
   end
 
-  attr_reader :config, :max_count, :retry_wait
+  attr_reader :config, :max_count, :retry_wait, :max_wait
+  attr_accessor :queue
 
   def start
+    self.queue = Queue.new
+
+    return unless influx_ready?
+
+    receive_thread = Thread.new { receive_loop }
+    push_thread = Thread.new { push_loop }
+
+    # Wait for the receive thread to finish (will happen if max_count is set)
+    receive_thread.join
+
+    # Push any remaining records to InfluxDB
+    close_queue
+
+    # Wait for the push thread to finish (will happen because queue is closed)
+    push_thread.join
+  rescue SystemExit, Interrupt
+    logger.warn 'Exiting...'
+
+    # Stop receiving MQTT messages
+    receive_thread&.exit
+
+    # Push any remaining records to InfluxDB (can take a while)
+    close_queue
+
+    # Stop pushing data to InfluxDB
+    push_thread&.exit
+  end
+
+  def stop
+    mqtt_client&.disconnect
+  rescue MQTT::ProtocolException, StandardError => e
+    handle_exception(e)
+  end
+
+  private
+
+  # Receive MQTT messages and add the resulting records to the queue, for
+  # InfluxPush to write - reconnects to the broker on error.
+  def receive_loop
     subscribe_topics
     receive_messages
   rescue MQTT::ProtocolException, StandardError => e
@@ -27,14 +68,6 @@ class Loop
     # Maybe use this gem: https://github.com/kamui/retriable
 
     retry if max_count.nil?
-  rescue SystemExit, Interrupt
-    logger.warn 'Exiting...'
-  end
-
-  def stop
-    mqtt_client&.disconnect
-  rescue MQTT::ProtocolException, StandardError => e
-    handle_exception(e)
   end
 
   def subscribe_topics
@@ -47,7 +80,7 @@ class Loop
     count = 0
     loop do
       time, records = next_message
-      influx_push.call(records, time: time.to_i) if records.any?
+      queue << { records:, time: time.to_i } if records.any?
 
       count += 1
       break if max_count && count >= max_count
@@ -57,7 +90,9 @@ class Loop
   def next_message
     topic, message = mqtt_client.get
 
-    # There is no timestamp in the MQTT message, so we use the current time
+    # There is no timestamp in the MQTT message, so we use the current time.
+    # This travels with the records through the queue, so a write that's
+    # delayed by a retry still lands at the time the message actually arrived.
     time = Time.now
 
     # Log all the data we received
@@ -76,8 +111,42 @@ class Loop
     [time, records]
   end
 
+  # Wait until InfluxDB is reachable, for up to max_wait seconds
+  def influx_ready?
+    logger.info 'Wait until InfluxDB is ready ...'
+
+    count = 0
+    until (ready = influx_push.ready?) || (max_wait && count >= max_wait)
+      count += 1
+      sleep 1
+    end
+
+    if ready
+      logger.info 'InfluxDB is ready.'
+      true
+    else
+      logger.error "InfluxDB not ready after #{count} seconds - aborting."
+      false
+    end
+  end
+
+  # Push records from the queue to InfluxDB
+  def push_loop
+    influx_push.run
+  end
+
   def influx_push
-    @influx_push ||= InfluxPush.new(config:)
+    @influx_push ||= InfluxPush.new(config:, queue:)
+  end
+
+  # Wait for the queue to drain, then close it so the push thread can finish
+  def close_queue
+    until queue.empty?
+      logger.info "Waiting for #{queue.size} batch(es) to be pushed to InfluxDB"
+      sleep 1
+    end
+
+    queue.close
   end
 
   def mqtt_client

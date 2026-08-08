@@ -7,6 +7,10 @@ class FluxWriter
 
   attr_reader :config
 
+  def ready?
+    influx_client.ping.status == 'ok'
+  end
+
   def push(records, time:)
     write_api.write(
       data: points(records, time:),
