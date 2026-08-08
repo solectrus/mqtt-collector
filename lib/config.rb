@@ -244,6 +244,10 @@ class Config
         validate_mapping!(mapping, :skip_write, allow_list: %w[true false])
       end
 
+      if mapping[:dedup]
+        validate_mapping!(mapping, :dedup, allow_list: %w[true false])
+      end
+
       validate_name!(mapping, index)
       validate_max_age!(mapping)
       validate_destination!(mapping)
