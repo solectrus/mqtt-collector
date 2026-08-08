@@ -94,13 +94,13 @@ class Mapper
   end
 
   # Describes which of the mapping's referenced values are missing or expired,
-  # e.g. " (missing or outdated: MAPPING_0 [sensor/power])". Falls back to a
+  # e.g. " (MAPPING_0 [sensor/power]: never received)". Falls back to a
   # generic note if the formula doesn't reference any (currently) unknown mapping.
   def missing_references_note(mapping)
     missing = missing_references(mapping)
     return ' (missing or outdated values)' if missing.empty?
 
-    " (missing or outdated: #{missing.map { |key| describe_reference(key) }.join(', ')})"
+    " (#{missing.map { |key| describe_reference(key) }.join(', ')})"
   end
 
   def missing_references(mapping)
@@ -113,9 +113,19 @@ class Mapper
 
   def describe_reference(key)
     mapping = mapping_by_key[key]
-    return key unless mapping
+    label = mapping ? "#{key} [#{mapping[:topic] || mapping[:field] || mapping[:field_positive]}]" : key
 
-    "#{key} [#{mapping[:topic] || mapping[:field] || mapping[:field_positive]}]"
+    "#{label}: #{reference_status(key)}"
+  end
+
+  # Distinguishes a value that was never received at all from one that was
+  # received but is now older than its own MAPPING_X_MAX_AGE.
+  def reference_status(key)
+    entry = last_values[key]
+    return 'never received' unless entry
+
+    age = (monotonic_time - entry[:received_at]).round
+    "last received #{age}s ago, exceeds MAX_AGE of #{max_age_by_key[key].to_i}s"
   end
 
   # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), along
