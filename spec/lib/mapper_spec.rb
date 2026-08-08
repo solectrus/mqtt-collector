@@ -358,6 +358,48 @@ SKIP_WRITE_ENV = {
   'MAPPING_3_SKIP_WRITE' => 'true',
 }.freeze
 
+DEDUP_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_DEDUP' => 'true',
+  'MAPPING_0_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/grid',
+  'MAPPING_1_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_1_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_1_FIELD_POSITIVE' => 'grid_import',
+  'MAPPING_1_FIELD_NEGATIVE' => 'grid_export',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_DEDUP' => 'true',
+  'MAPPING_1_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/leak',
+  'MAPPING_2_MEASUREMENT' => 'Leak',
+  'MAPPING_2_FIELD' => 'detected',
+  'MAPPING_2_TYPE' => 'boolean',
+  'MAPPING_2_DEDUP' => 'true',
+  'MAPPING_2_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_3_TOPIC' => 'sensor/status',
+  'MAPPING_3_MEASUREMENT' => 'System',
+  'MAPPING_3_FIELD' => 'status',
+  'MAPPING_3_TYPE' => 'string',
+  'MAPPING_3_DEDUP' => 'true',
+  'MAPPING_3_HEARTBEAT_INTERVAL' => '60',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -975,6 +1017,140 @@ describe Mapper do
       expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
         '(no InfluxDB field) (integer, not written to InfluxDB)',
       )
+    end
+  end
+
+  context 'with MAPPING_X_DEDUP' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(DEDUP_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'always writes the first value, even if it is zero' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
+    end
+
+    it 'suppresses repeated zeros indefinitely, without a heartbeat' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '0')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([])
+    end
+
+    it 'always writes a value once it actually changes' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1000.1)
+      hash = mapper.records_for('sensor/power', '200')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 200 }])
+    end
+
+    it 'suppresses a repeated non-zero value within the heartbeat interval' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1030.0) # 30s later - within the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([])
+    end
+
+    it 'writes a repeated non-zero value again once the heartbeat interval has passed' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1061.0) # 61s later - beyond the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 100 }])
+    end
+
+    it 'treats each field of a positive/negative mapping independently' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/grid', '100') # import
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 0 },
+          { field: 'grid_import', measurement: 'PV', value: 100 },
+        ],
+      )
+
+      # grid_export stays at 0 (suppressed), grid_import changes - still written
+      at(1000.1)
+      hash = mapper.records_for('sensor/grid', '150')
+      expect(hash).to eq([{ field: 'grid_import', measurement: 'PV', value: 150 }])
+
+      # Now import goes quiet at 0, export becomes non-zero - both change, both written
+      at(1000.2)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 50 },
+          { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
+
+      # grid_import (now 0) and grid_export (still 50) both repeat - suppressed within heartbeat
+      at(1000.3)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq([])
+
+      # Well beyond the heartbeat interval - grid_export (non-zero) is written again,
+      # grid_import stays suppressed since it's zero
+      at(1061.0)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq([{ field: 'grid_export', measurement: 'PV', value: 50 }])
+    end
+
+    it 'mentions dedup and the heartbeat interval in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/power')).to eq(
+        'PV:power (integer, deduplicated (heartbeat 60s))',
+      )
+    end
+
+    it 'treats a repeated "false" boolean like a zero (suppressed indefinitely)' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'false')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/leak', 'false')
+
+      expect(hash).to eq([])
+    end
+
+    it 'still applies the heartbeat to a repeated "true" boolean' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'true')
+
+      at(1061.0)
+      hash = mapper.records_for('sensor/leak', 'true')
+
+      expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: true }])
+    end
+
+    it 'still applies the heartbeat to a repeated string value (no zero-equivalent)' do
+      at(1000.0)
+      mapper.records_for('sensor/status', 'idle')
+
+      at(1030.0) # within the heartbeat interval - suppressed
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([])
+
+      at(1061.0) # beyond the heartbeat interval - written again
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([{ field: 'status', measurement: 'System', value: 'idle' }])
     end
   end
 end

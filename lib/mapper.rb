@@ -1,5 +1,7 @@
 require 'evaluator'
 
+DEFAULT_HEARTBEAT_INTERVAL = 60
+
 class Mapper
   def initialize(config:)
     @config = config
@@ -47,7 +49,14 @@ class Mapper
              "#{", named '#{mapping[:name]}'" if mapping[:name]}" \
              "#{", averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]}" \
              "#{', not written to InfluxDB' if mapping[:skip_write] == 'true'}" \
+             "#{dedup_description(mapping)}" \
              ')'
+  end
+
+  def dedup_description(mapping)
+    return '' unless mapping[:dedup] == 'true'
+
+    ", deduplicated (heartbeat #{mapping[:heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL}s)"
   end
 
   def mapping_target(mapping)
@@ -86,11 +95,58 @@ class Mapper
     value = throttled(mapping, value)
     return [] if value.nil?
 
-    if signed?(mapping)
-      map_with_sign(mapping, value)
-    else
-      map_default(mapping, value)
+    records =
+      if signed?(mapping)
+        map_with_sign(mapping, value)
+      else
+        map_default(mapping, value)
+      end
+
+    deduped(mapping, records)
+  end
+
+  # If MAPPING_X_DEDUP is set, a record is only passed through when its value
+  # actually changed - except a zero value is always written once and then
+  # suppressed for as long as it stays zero (no further signal needed), while
+  # a repeated non-zero value is still written every MAPPING_X_HEARTBEAT_INTERVAL
+  # seconds (default 60), to show that the sender is still alive.
+  def deduped(mapping, records)
+    return records unless mapping[:dedup] == 'true'
+
+    interval = (mapping[:heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL).to_f
+    records.select { |record| due_for_write?(record, interval) }
+  end
+
+  def due_for_write?(record, interval)
+    key = [record[:measurement], record[:field]]
+    last = dedup_state[key]
+
+    if last.nil? || last[:value] != record[:value]
+      dedup_state[key] = { value: record[:value], written_at: monotonic_time }
+      return true
     end
+
+    return false if zero_ish?(record[:value])
+
+    return false if monotonic_time - last[:written_at] < interval
+
+    last[:written_at] = monotonic_time
+    true
+  end
+
+  def zero_ish?(value)
+    case value
+    when Numeric
+      value.zero?
+    when true, false
+      value == false
+    else
+      false
+    end
+  end
+
+  def dedup_state
+    @dedup_state ||= {}
   end
 
   # If MAPPING_X_AGGREGATE_INTERVAL is set, don't pass every single value
