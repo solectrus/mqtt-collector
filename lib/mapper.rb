@@ -53,6 +53,7 @@ class Mapper
              "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
              "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
              "#{", averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]}" \
+             "#{', not written to InfluxDB' if mapping[:skip_write] == 'true'}" \
              ')'
   end
 
@@ -76,6 +77,7 @@ class Mapper
 
   def records_from(mapping, value)
     return [] if value.nil?
+    return [] if mapping[:skip_write] == 'true'
 
     value = throttled(mapping, value)
     return [] if value.nil?

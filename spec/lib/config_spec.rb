@@ -515,6 +515,9 @@ describe Config do
       # Invalid null_to_zero
       [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
        'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
+      # Invalid skip_write
+      [:merge, { 'MAPPING_0_SKIP_WRITE' => 'this-is-no-boolean' },
+       'Variable MAPPING_0_SKIP_WRITE is invalid: this-is-no-boolean. Must be one of: true, false',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)
