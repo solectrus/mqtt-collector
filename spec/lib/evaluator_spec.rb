@@ -149,4 +149,22 @@ describe Evaluator do
       expect(evaluator.run).to be_nil
     end
   end
+
+  context 'with missing data and a comparison operator' do
+    let(:data) { { 'a' => 2 } }
+
+    it 'returns nil for !=, instead of treating the missing value as a real nil' do
+      expect(described_class.new(expression: '{a} != {b}', data:).run).to be_nil
+    end
+
+    it 'returns nil for ==, instead of treating the missing value as a real nil' do
+      expect(described_class.new(expression: '{a} == {b}', data:).run).to be_nil
+    end
+
+    it 'returns nil for IF() using a comparison with the missing value' do
+      expect(
+        described_class.new(expression: "IF({a} != {b}, {a}, 'unreachable')", data:).run,
+      ).to be_nil
+    end
+  end
 end

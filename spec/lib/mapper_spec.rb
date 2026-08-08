@@ -263,6 +263,34 @@ MAX_AGE_ENV = {
   'MAPPING_3_TYPE' => 'integer',
 }.freeze
 
+LOGIC_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/x',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'x',
+  'MAPPING_0_TYPE' => 'integer',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/y',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'y',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  # Virtual mapping: no topic, uses IF() with a comparison across mappings
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'different',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => 'IF({MAPPING_0} != {MAPPING_1}, {MAPPING_0}, 0)',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -720,6 +748,44 @@ describe Mapper do
       )
       expect(logger.warn_messages).to include(
         %r{Formula for shadow_power.*power \[sensor/power\]: never received.*other \[sensor/other\]: never received},
+      )
+    end
+  end
+
+  context 'with a comparison operator (==, !=) in a virtual mapping formula' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(LOGIC_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not calculate the result before both sides are known' do
+      hash = mapper.records_for('sensor/x', '10')
+
+      expect(hash).to eq([{ field: 'x', measurement: 'PV', value: 10 }])
+    end
+
+    it 'returns 0 (the "else" branch) once both sides are known and equal' do
+      mapper.records_for('sensor/x', '10')
+      hash = mapper.records_for('sensor/y', '10')
+
+      expect(hash).to eq(
+        [
+          { field: 'y', measurement: 'PV', value: 10 },
+          { field: 'different', measurement: 'PV', value: 0 },
+        ],
+      )
+    end
+
+    it 'returns the mapping value (the "then" branch) once both sides differ' do
+      mapper.records_for('sensor/x', '10')
+      mapper.records_for('sensor/y', '10')
+      hash = mapper.records_for('sensor/x', '20')
+
+      expect(hash).to eq(
+        [
+          { field: 'x', measurement: 'PV', value: 20 },
+          { field: 'different', measurement: 'PV', value: 20 },
+        ],
       )
     end
   end
