@@ -25,8 +25,18 @@ class Evaluator
     expression.scan(/{(.*?)}/).flatten
   end
 
+  # Only bind variables that actually have a value. Dentaku's comparison
+  # operators (==, !=) happily compare against an explicit nil instead of
+  # raising, so a bound-but-nil variable would silently be treated as a real,
+  # distinct value rather than "unknown" - unlike arithmetic operators, which
+  # do raise (and get rescued below into an overall nil result). Leaving the
+  # variable out entirely makes Dentaku treat it as unbound, which errors out
+  # (rescued into nil) consistently for every operator.
   def extract_values_from_data(vars)
-    vars.to_h { |var| [normalized_variable(var), value(var)] }
+    vars.filter_map do |var|
+      val = value(var)
+      [normalized_variable(var), val] unless val.nil?
+    end.to_h
   end
 
   def value(variable)
