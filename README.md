@@ -36,6 +36,14 @@ Note: For a SENEC device there is a dedicated [senec-collector](https://github.c
 
 The Docker image supports multiple platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
 
+## Resilience against InfluxDB outages
+
+On startup, the collector waits (up to 12 seconds) for InfluxDB to become reachable before it starts subscribing to MQTT.
+
+While running, incoming MQTT messages are always received and converted immediately - they're never blocked by a slow or unreachable InfluxDB. Instead, they're queued in memory and written by a separate background process. If a write fails (e.g. because InfluxDB is temporarily unreachable), the batch stays queued and is retried automatically every 5 seconds, keeping its original measurement time - so once InfluxDB is reachable again, the backlog is delivered with the timestamps of when the values actually arrived, not when they were finally written.
+
+Note: this in-memory queue is lost if the container is restarted while InfluxDB is still unreachable.
+
 ## Development
 
 For development you need a recent Ruby setup. On a Mac, I recommend [rbenv](https://github.com/rbenv/rbenv).
