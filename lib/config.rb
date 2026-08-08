@@ -374,7 +374,10 @@ class Config
     mapping[:name] || "MAPPING_#{mapping[:mapping_group]}"
   end
 
+  # A mapping that is never written to InfluxDB does not need a destination
   def validate_destination!(mapping)
+    return if mapping[:skip_write] == 'true'
+
     if mapping[:field_positive] || mapping[:field_negative]
       validate_mapping!(mapping, :field_positive)
       validate_mapping!(mapping, :field_negative)

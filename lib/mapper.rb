@@ -41,14 +41,6 @@ class Mapper
   private
 
   def describe_mapping(mapping)
-    result =
-      if signed?(mapping)
-        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-      else
-        "#{mapping[:measurement]}:#{mapping[:field]}"
-      end
-
     details = [
       "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}#{" ≤ #{mapping[:max]}" if mapping[:max]}",
       ('converting NULL to 0' if mapping[:null_to_zero] == 'true'),
@@ -58,7 +50,20 @@ class Mapper
       ('not written to InfluxDB' if mapping[:skip_write] == 'true'),
     ].compact
 
-    "#{result} (#{details.join(', ')})"
+    "#{mapping_target(mapping)} (#{details.join(', ')})"
+  end
+
+  # A mapping that is never written has no destination to name, because
+  # MAPPING_X_FIELD and MAPPING_X_MEASUREMENT are optional for it.
+  def mapping_target(mapping)
+    if signed?(mapping)
+      "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+        "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+    elsif mapping[:measurement] || mapping[:field]
+      "#{mapping[:measurement]}:#{mapping[:field]}"
+    else
+      '(no InfluxDB field)'
+    end
   end
 
   def records_for_mapping(mapping, message, updated)
