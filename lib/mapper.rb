@@ -54,6 +54,7 @@ class Mapper
       ('converting NULL to 0' if mapping[:null_to_zero] == 'true'),
       ("named '#{mapping[:name]}'" if mapping[:name]),
       ("expiring after #{mapping[:max_age]}s" if mapping[:max_age]),
+      ("averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]),
     ].compact
 
     "#{result} (#{details.join(', ')})"
@@ -82,11 +83,56 @@ class Mapper
   end
 
   def map_value(mapping, value)
+    value = throttled(mapping, value)
+
     if value && signed?(mapping)
       map_with_sign(mapping, value)
     else
       map_default(mapping, value)
     end
+  end
+
+  # If MAPPING_X_AGGREGATE_INTERVAL is set, don't pass every single value
+  # through - instead collect them and only return the average once the
+  # interval has passed, so high-frequency updates get throttled down to one
+  # write per interval. Returns the value unchanged if no interval is set, or
+  # if there is no value to collect.
+  def throttled(mapping, value)
+    interval = mapping[:aggregate_interval]&.to_f
+    return value if value.nil? || interval.nil?
+
+    average = aggregate(mapping_key(mapping), value, interval)
+    return nil if average.nil?
+
+    convert_type(average, mapping)
+  end
+
+  # Collects values per mapping in a fixed window starting with the first
+  # value received for it. Returns nil while the window is still open, or the
+  # average of all values collected so far once the interval has elapsed -
+  # at which point the window resets, to start fresh with the next value.
+  def aggregate(key, value, interval)
+    now = monotonic_time
+    buffer = (aggregation_buffers[key] ||= { sum: 0.0, count: 0, window_start: now })
+
+    buffer[:sum] += value
+    buffer[:count] += 1
+
+    return nil if now - buffer[:window_start] < interval
+
+    average = buffer[:sum] / buffer[:count]
+    aggregation_buffers.delete(key)
+    average
+  end
+
+  def aggregation_buffers
+    @aggregation_buffers ||= {}
+  end
+
+  # The aggregation buffer is the only place that needs a key per mapping,
+  # because a mapping without a NAME must have one, too.
+  def mapping_key(mapping)
+    "MAPPING_#{mapping[:mapping_group]}"
   end
 
   def virtual_value_from(mapping)

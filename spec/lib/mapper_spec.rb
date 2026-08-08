@@ -416,6 +416,27 @@ BOOLEAN_LOGIC_ENV = {
   'MAPPING_3_FORMULA' => '{flag} == false',
 }.freeze
 
+AGGREGATE_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/fast',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'fast_value',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_AGGREGATE_INTERVAL' => '5',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/plain',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'plain_value',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/signed',
+  'MAPPING_2_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_2_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_2_FIELD_POSITIVE' => 'signed_plus',
+  'MAPPING_2_FIELD_NEGATIVE' => 'signed_minus',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_AGGREGATE_INTERVAL' => '5',
+).freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -1139,6 +1160,80 @@ describe Mapper do
         ],
       )
       expect(logger.warn_messages).to be_empty
+    end
+  end
+
+  context 'with MAPPING_X_AGGREGATE_INTERVAL' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(AGGREGATE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'does not affect a mapping without AGGREGATE_INTERVAL' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/plain', '42')
+
+      expect(hash).to eq([{ field: 'plain_value', measurement: 'PV', value: 42 }])
+    end
+
+    it 'collects values without writing anything until the interval elapses' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/fast', '10')
+      expect(hash).to eq([])
+
+      at(1002.0) # 2s later - still within the 5s window
+      hash = mapper.records_for('sensor/fast', '20')
+      expect(hash).to eq([])
+    end
+
+    it 'writes the average of all collected values once the interval elapses' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1002.0)
+      mapper.records_for('sensor/fast', '20')
+
+      at(1006.0) # 6s after the window started - beyond the 5s interval
+      hash = mapper.records_for('sensor/fast', '30')
+
+      # average of 10, 20, 30 == 20
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 20 }])
+    end
+
+    it 'starts a fresh window after flushing, instead of carrying over old values' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1006.0)
+      mapper.records_for('sensor/fast', '20') # flushes average of [10, 20] == 15
+
+      at(1007.0) # new window just started - not yet due
+      hash = mapper.records_for('sensor/fast', '100')
+      expect(hash).to eq([])
+
+      at(1012.0) # 5s into the new window
+      hash = mapper.records_for('sensor/fast', '200')
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 150 }])
+    end
+
+    it 'applies the aggregation before splitting into positive/negative fields' do
+      at(1000.0)
+      mapper.records_for('sensor/signed', '-10')
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/signed', '30')
+
+      # average of -10 and 30 == 10 (positive)
+      expect(hash).to eq(
+        [
+          { field: 'signed_minus', measurement: 'PV', value: 0 },
+          { field: 'signed_plus', measurement: 'PV', value: 10 },
+        ],
+      )
     end
   end
 end
