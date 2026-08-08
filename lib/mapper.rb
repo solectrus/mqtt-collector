@@ -52,6 +52,7 @@ class Mapper
              "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
              "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
              "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
+             "#{", averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]}" \
              ')'
   end
 
@@ -59,11 +60,7 @@ class Mapper
     value = value_from(message, mapping)
     remember_value(mapping, value)
 
-    if value && signed?(mapping)
-      map_with_sign(mapping, value)
-    else
-      map_default(mapping, value)
-    end
+    records_from(mapping, value)
   end
 
   # Recalculate all virtual mappings, since any of them might reference a
@@ -73,12 +70,57 @@ class Mapper
       value = virtual_value_from(mapping)
       remember_value(mapping, value)
 
-      if value && signed?(mapping)
-        map_with_sign(mapping, value)
-      else
-        map_default(mapping, value)
-      end
+      records_from(mapping, value)
     end
+  end
+
+  def records_from(mapping, value)
+    return [] if value.nil?
+
+    value = throttled(mapping, value)
+    return [] if value.nil?
+
+    if signed?(mapping)
+      map_with_sign(mapping, value)
+    else
+      map_default(mapping, value)
+    end
+  end
+
+  # If MAPPING_X_AGGREGATE_INTERVAL is set, don't pass every single value
+  # through - instead collect them and only return the average once the
+  # interval has passed, so high-frequency updates get throttled down to one
+  # write per interval. Returns the value unchanged if no interval is set.
+  def throttled(mapping, value)
+    interval = mapping[:aggregate_interval]&.to_f
+    return value unless interval
+
+    average = aggregate(mapping_key(mapping), value, interval)
+    return nil if average.nil?
+
+    convert_type(average, mapping)
+  end
+
+  # Collects values per mapping in a fixed window starting with the first
+  # value received for it. Returns nil while the window is still open, or the
+  # average of all values collected so far once the interval has elapsed -
+  # at which point the window resets, to start fresh with the next value.
+  def aggregate(key, value, interval)
+    now = monotonic_time
+    buffer = (aggregation_buffers[key] ||= { sum: 0.0, count: 0, window_start: now })
+
+    buffer[:sum] += value
+    buffer[:count] += 1
+
+    return nil if now - buffer[:window_start] < interval
+
+    average = buffer[:sum] / buffer[:count]
+    aggregation_buffers.delete(key)
+    average
+  end
+
+  def aggregation_buffers
+    @aggregation_buffers ||= {}
   end
 
   def virtual_value_from(mapping)
