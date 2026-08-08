@@ -251,6 +251,12 @@ MAX_AGE_ENV = {
   'MAPPING_2_FIELD' => 'shadow_power',
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  #
+  # Unrelated topic, only used to trigger a virtual mapping recalculation
+  'MAPPING_3_TOPIC' => 'sensor/decoy',
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'decoy',
+  'MAPPING_3_TYPE' => 'integer',
 }.freeze
 
 describe Mapper do
@@ -695,7 +701,21 @@ describe Mapper do
       expect(hash).to eq(
         [{ field: 'other', measurement: 'PV', value: 5 }],
       )
-      expect(logger.warn_messages).to include(/Formula for shadow_power.*outdated/)
+      expect(logger.warn_messages).to include(
+        %r{Formula for shadow_power could not be evaluated \(missing or outdated: MAPPING_0 \[sensor/power\]\)},
+      )
+    end
+
+    it 'names all missing or outdated references, not just the first one' do
+      # Neither MAPPING_0 nor MAPPING_1 has ever received a value
+      hash = mapper.records_for('sensor/decoy', '1')
+
+      expect(hash).to eq(
+        [{ field: 'decoy', measurement: 'PV', value: 1 }],
+      )
+      expect(logger.warn_messages).to include(
+        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\].*MAPPING_1 \[sensor/other\]},
+      )
     end
   end
 end
