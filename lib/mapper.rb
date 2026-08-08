@@ -86,11 +86,36 @@ class Mapper
 
     if message.nil? && mapping[:null_to_zero] != 'true'
       config.logger.warn "  Formula for #{mapping[:field] || mapping[:field_positive]} " \
-                          'could not be evaluated (missing or outdated values), ignoring.'
+                          "could not be evaluated#{missing_references_note(mapping)}, ignoring."
       return
     end
 
     convert_type(message, mapping)
+  end
+
+  # Describes which of the mapping's referenced values are missing or expired,
+  # e.g. " (missing or outdated: MAPPING_0 [sensor/power])". Falls back to a
+  # generic note if the formula doesn't reference any (currently) unknown mapping.
+  def missing_references_note(mapping)
+    missing = missing_references(mapping)
+    return ' (missing or outdated values)' if missing.empty?
+
+    " (missing or outdated: #{missing.map { |key| describe_reference(key) }.join(', ')})"
+  end
+
+  def missing_references(mapping)
+    referenced_keys(mapping) - fresh_values.keys
+  end
+
+  def referenced_keys(mapping)
+    mapping[:formula].scan(/{(.*?)}/).flatten.uniq
+  end
+
+  def describe_reference(key)
+    mapping = mapping_by_key[key]
+    return key unless mapping
+
+    "#{key} [#{mapping[:topic] || mapping[:field] || mapping[:field_positive]}]"
   end
 
   # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), along
@@ -114,8 +139,11 @@ class Mapper
   end
 
   def max_age_by_key
-    @max_age_by_key ||=
-      config.mappings.to_h { |mapping| [mapping_key(mapping), mapping[:max_age]&.to_f] }
+    @max_age_by_key ||= mapping_by_key.transform_values { |mapping| mapping[:max_age]&.to_f }
+  end
+
+  def mapping_by_key
+    @mapping_by_key ||= config.mappings.to_h { |mapping| [mapping_key(mapping), mapping] }
   end
 
   def mapping_key(mapping)
