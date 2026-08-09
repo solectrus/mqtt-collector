@@ -364,17 +364,19 @@ LOGIC_ENV = {
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'x',
   'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'x',
   #
   'MAPPING_1_TOPIC' => 'sensor/y',
   'MAPPING_1_MEASUREMENT' => 'PV',
   'MAPPING_1_FIELD' => 'y',
   'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'y',
   #
   # Virtual mapping: no topic, uses IF() with a comparison across mappings
   'MAPPING_2_MEASUREMENT' => 'PV',
   'MAPPING_2_FIELD' => 'different',
   'MAPPING_2_TYPE' => 'integer',
-  'MAPPING_2_FORMULA' => 'IF({MAPPING_0} != {MAPPING_1}, {MAPPING_0}, 0)',
+  'MAPPING_2_FORMULA' => 'IF({x} != {y}, {x}, 0)',
 }.freeze
 
 describe Mapper do
