@@ -43,7 +43,13 @@ jobs:
 
   build:
     needs: test
-    if: ${{ github.triggering_actor != 'dependabot[bot]' }}
+    # Skip for Dependabot, and for a pull request from a fork: a fork gets no
+    # access to CR_PAT, so the registry login would fail. A collaborator who
+    # opens the pull request from a branch in this repository does get an image.
+    if: >-
+      ${{ github.triggering_actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository) }}
 
     strategy:
       fail-fast: false
