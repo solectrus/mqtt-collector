@@ -6,9 +6,10 @@ on:
       - develop
     tags:
       - v*
+  # No branches filter: that filter matches the base branch, so a stacked pull
+  # request (one that targets another pull request's branch) would get neither
+  # tests nor an image.
   pull_request:
-    branches:
-      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,13 +44,18 @@ jobs:
 
   build:
     needs: test
-    # Skip for Dependabot, and for a pull request from a fork: a fork gets no
-    # access to CR_PAT, so the registry login would fail. A collaborator who
-    # opens the pull request from a branch in this repository does get an image.
+    # Always build for a push to develop or to a tag. For a pull request, build
+    # only when it comes from a branch in this repository and not from
+    # Dependabot. A fork gets no access to CR_PAT, so the registry login would
+    # fail, and a dependency update needs no image.
+    #
+    # This looks at the pull request author, not at the triggering actor: the
+    # actor becomes a person as soon as someone pushes a commit to a Dependabot
+    # branch, which would build an image nobody asked for.
     if: >-
-      ${{ github.triggering_actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository) }}
+      ${{ github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]') }}
 
     strategy:
       fail-fast: false
