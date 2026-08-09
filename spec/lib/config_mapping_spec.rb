@@ -116,10 +116,11 @@ describe Config, '#mapping' do
           'MAPPING_0_MEASUREMENT' => 'PV',
           'MAPPING_0_FIELD' => 'inverter_power',
           'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_NAME' => 'inverter_power',
           'MAPPING_1_MEASUREMENT' => 'PV',
           'MAPPING_1_FIELD' => 'inverter_power_doubled',
           'MAPPING_1_TYPE' => 'integer',
-          'MAPPING_1_FORMULA' => '{MAPPING_0} * 2',
+          'MAPPING_1_FORMULA' => '{inverter_power} * 2',
         },
       )
     end
@@ -132,17 +133,46 @@ describe Config, '#mapping' do
             measurement: 'PV',
             field: 'inverter_power',
             type: 'integer',
+            name: 'inverter_power',
             mapping_group: '0',
           },
           {
             measurement: 'PV',
             field: 'inverter_power_doubled',
             type: 'integer',
-            formula: '{MAPPING_0} * 2',
+            formula: '{inverter_power} * 2',
             mapping_group: '1',
           },
         ],
       )
+    end
+  end
+
+  context 'when a referenced mapping is renumbered (e.g. by HELIOS re-generating the config)' do
+    def env_with_inverter_at(index)
+      other_env.merge(
+        {
+          "MAPPING_#{index}_TOPIC" => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          "MAPPING_#{index}_MEASUREMENT" => 'PV',
+          "MAPPING_#{index}_FIELD" => 'inverter_power',
+          "MAPPING_#{index}_TYPE" => 'integer',
+          "MAPPING_#{index}_NAME" => 'inverter_power',
+          'MAPPING_9_MEASUREMENT' => 'PV',
+          'MAPPING_9_FIELD' => 'inverter_power_doubled',
+          'MAPPING_9_TYPE' => 'integer',
+          'MAPPING_9_FORMULA' => '{inverter_power} * 2',
+        },
+      )
+    end
+
+    it 'still resolves the formula by name, regardless of the numeric index used' do
+      original = described_class.new(env_with_inverter_at(0)).mappings
+      renumbered = described_class.new(env_with_inverter_at(3)).mappings
+
+      original_formula = original.find { |mapping| mapping[:formula] }
+      renumbered_formula = renumbered.find { |mapping| mapping[:formula] }
+
+      expect(original_formula[:formula]).to eq(renumbered_formula[:formula])
     end
   end
 end

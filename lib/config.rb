@@ -198,28 +198,64 @@ class Config
         validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
       end
 
-      if mapping[:field_positive] || mapping[:field_negative]
-        validate_mapping!(index, :field_positive)
-        validate_mapping!(index, :field_negative)
-        validate_mapping!(index, :measurement_positive)
-        validate_mapping!(index, :measurement_negative)
+      validate_name!(index)
+      validate_max_age!(mapping)
+      validate_destination!(mapping, index)
+    end
+  end
 
-        validate_mapping!(index, :field, present: false)
-        validate_mapping!(index, :measurement, present: false)
-      else
-        validate_mapping!(index, :field)
-        validate_mapping!(index, :measurement)
+  def validate_max_age!(mapping)
+    return unless mapping[:max_age] && !mapping[:name]
 
-        validate_mapping!(index, :field_negative, present: false)
-        validate_mapping!(index, :field_positive, present: false)
-        validate_mapping!(index, :measurement_positive, present: false)
-        validate_mapping!(index, :measurement_negative, present: false)
-      end
+    raise Config::Error,
+          "Variable MAPPING_#{mapping[:mapping_group]}_MAX_AGE requires " \
+          "MAPPING_#{mapping[:mapping_group]}_NAME to be set"
+  end
+
+  def validate_destination!(mapping, index)
+    if mapping[:field_positive] || mapping[:field_negative]
+      validate_mapping!(index, :field_positive)
+      validate_mapping!(index, :field_negative)
+      validate_mapping!(index, :measurement_positive)
+      validate_mapping!(index, :measurement_negative)
+
+      validate_mapping!(index, :field, present: false)
+      validate_mapping!(index, :measurement, present: false)
+    else
+      validate_mapping!(index, :field)
+      validate_mapping!(index, :measurement)
+
+      validate_mapping!(index, :field_negative, present: false)
+      validate_mapping!(index, :field_positive, present: false)
+      validate_mapping!(index, :measurement_positive, present: false)
+      validate_mapping!(index, :measurement_negative, present: false)
     end
   end
 
   def virtual_mapping?(mapping)
     mapping[:topic].nil? || mapping[:topic].strip == ''
+  end
+
+  # MAPPING_X_NAME is the optional alias other mappings use to reference this
+  # one from a formula (e.g. {washer}), instead of the numeric MAPPING_X index
+  # - which shifts whenever a mapping is added or removed further up (e.g. by
+  # HELIOS-generated configs), silently pointing a formula at the wrong value.
+  def validate_name!(index)
+    mapping = mappings[index]
+    name = mapping[:name]
+    return unless name
+
+    var = "MAPPING_#{mapping[:mapping_group]}_NAME"
+
+    if name.strip == ''
+      raise Config::Error, "Missing variable: #{var}"
+    elsif name == 'value'
+      raise Config::Error, "Variable #{var} is invalid: \"value\" is reserved for MAPPING_X_FORMULA"
+    elsif name.match?(/[{}]/)
+      raise Config::Error, "Variable #{var} is invalid: must not contain { or }"
+    elsif mappings.each_with_index.any? { |other, i| i != index && other[:name] == name }
+      raise Config::Error, "Variable #{var} is invalid: name \"#{name}\" is already used by another mapping"
+    end
   end
 
   def validate_mapping!(index, key, present: true, allow_list: nil)
