@@ -185,6 +185,10 @@ class Mapper
     @aggregation_buffers ||= {}
   end
 
+  def mapping_key(mapping)
+    "MAPPING_#{mapping[:mapping_group]}"
+  end
+
   def virtual_value_from(mapping)
     message = Evaluator.new(expression: mapping[:formula], data: fresh_values).run
 

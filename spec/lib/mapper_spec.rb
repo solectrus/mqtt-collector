@@ -340,17 +340,19 @@ SKIP_WRITE_ENV = {
   'MAPPING_0_FIELD' => 'power',
   'MAPPING_0_TYPE' => 'integer',
   'MAPPING_0_SKIP_WRITE' => 'true',
+  'MAPPING_0_NAME' => 'washer',
   #
   'MAPPING_1_TOPIC' => 'sensor/dryer',
   'MAPPING_1_MEASUREMENT' => 'Dryer',
   'MAPPING_1_FIELD' => 'power',
   'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'dryer',
   #
   # Virtual mapping: no topic, calculated from MAPPING_0 (skipped) and MAPPING_1 (written)
   'MAPPING_2_MEASUREMENT' => 'Household',
   'MAPPING_2_FIELD' => 'total_power',
   'MAPPING_2_TYPE' => 'integer',
-  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  'MAPPING_2_FORMULA' => '{washer} + {dryer}',
   #
   # Skipped mapping without FIELD/MEASUREMENT at all - only feeds MAPPING_2
   'MAPPING_3_TOPIC' => 'sensor/heatpump',
@@ -1005,9 +1007,9 @@ describe Mapper do
 
     it 'mentions skipped mappings in the formatted description' do
       expect(mapper.formatted_mapping('sensor/washer')).to eq(
-        'Washer:power (integer, not written to InfluxDB)',
+        "Washer:power (integer, named 'washer', not written to InfluxDB)",
       )
-      expect(mapper.formatted_mapping('sensor/dryer')).to eq('Dryer:power (integer)')
+      expect(mapper.formatted_mapping('sensor/dryer')).to eq("Dryer:power (integer, named 'dryer')")
     end
 
     it 'does not require FIELD/MEASUREMENT for a skipped mapping' do
