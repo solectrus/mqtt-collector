@@ -16,9 +16,13 @@ jobs:
         with:
           github-token: '${{ secrets.PAT }}'
 
-      - name: Enable auto-merge for Dependabot PRs
+      # The develop branch requires one approval, which Dependabot cannot give
+      # itself. Without the approval the auto-merge waits forever.
+      - name: Approve and auto-merge Dependabot PRs
         if: ${{ steps.metadata.outputs.update-type != 'version-update:semver-major' }}
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
           GITHUB_TOKEN: ${{secrets.PAT}}
