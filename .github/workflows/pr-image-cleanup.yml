@@ -1,0 +1,34 @@
+name: Cleanup PR image
+
+# Deletes the pr-<number> image once its pull request is closed or merged.
+# The nightly GHCR Cleanup workflow only removes untagged versions, so these
+# tags would stay forever.
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+
+    # Only a pull request from a branch in this repository can build an image.
+    # Try it for every such pull request, whatever the build job decides: a
+    # pull request without an image is tolerated by continue-on-error below.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+    steps:
+      # Tolerates a missing tag, for example when the build failed
+      - name: Delete the image of this pull request
+        continue-on-error: true
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: mqtt-collector
+          delete-tags: pr-${{ github.event.pull_request.number }}
