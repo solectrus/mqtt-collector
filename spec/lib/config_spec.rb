@@ -515,6 +515,17 @@ describe Config do
       # Invalid null_to_zero
       [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
        'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
+      # Invalid name
+      [:merge, { 'MAPPING_0_NAME' => '' }, 'Missing variable: MAPPING_0_NAME'],
+      [:merge, { 'MAPPING_0_NAME' => 'value' },
+       'Variable MAPPING_0_NAME is invalid: "value" is reserved for MAPPING_X_FORMULA',],
+      [:merge, { 'MAPPING_0_NAME' => 'inverter{power}' },
+       'Variable MAPPING_0_NAME is invalid: must not contain { or }',],
+      [:merge, { 'MAPPING_0_NAME' => 'dup', 'MAPPING_1_NAME' => 'dup' },
+       'Variable MAPPING_0_NAME is invalid: name "dup" is already used by another mapping',],
+      # max_age requires a name
+      [:merge, { 'MAPPING_0_MAX_AGE' => '60' },
+       'Variable MAPPING_0_MAX_AGE requires MAPPING_0_NAME to be set',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)

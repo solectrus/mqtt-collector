@@ -196,24 +196,26 @@ VIRTUAL_ENV = {
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'inverter_power',
   'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'inverter_power',
   #
   'MAPPING_1_TOPIC' => 'senec/0/ENERGY/GUI_HOUSE_POW',
   'MAPPING_1_MEASUREMENT' => 'PV',
   'MAPPING_1_FIELD' => 'house_power',
   'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'house_power',
   #
-  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  # Virtual mapping: no topic, calculated from inverter_power and house_power
   'MAPPING_2_MEASUREMENT' => 'PV',
   'MAPPING_2_FIELD' => 'total_power',
   'MAPPING_2_TYPE' => 'integer',
-  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  'MAPPING_2_FORMULA' => '{inverter_power} + {house_power}',
   #
-  # Virtual mapping: no topic, referencing a mapping that never receives data
+  # Virtual mapping: no topic, referencing a name that's never defined anywhere
   'MAPPING_3_MEASUREMENT' => 'PV',
   'MAPPING_3_FIELD' => 'missing_ref',
   'MAPPING_3_TYPE' => 'integer',
   'MAPPING_3_NULL_TO_ZERO' => 'true',
-  'MAPPING_3_FORMULA' => '{MAPPING_99}',
+  'MAPPING_3_FORMULA' => '{missing_sensor}',
   #
   # Virtual mapping: no topic, with positive/negative fields
   'MAPPING_4_MEASUREMENT_POSITIVE' => 'PV',
@@ -221,7 +223,7 @@ VIRTUAL_ENV = {
   'MAPPING_4_FIELD_POSITIVE' => 'net_power_plus',
   'MAPPING_4_FIELD_NEGATIVE' => 'net_power_minus',
   'MAPPING_4_TYPE' => 'integer',
-  'MAPPING_4_FORMULA' => '{MAPPING_0} - {MAPPING_1}',
+  'MAPPING_4_FORMULA' => '{inverter_power} - {house_power}',
 }.freeze
 
 MAX_AGE_ENV = {
@@ -239,18 +241,20 @@ MAX_AGE_ENV = {
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'power',
   'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'power',
   'MAPPING_0_MAX_AGE' => '30',
   #
   'MAPPING_1_TOPIC' => 'sensor/other',
   'MAPPING_1_MEASUREMENT' => 'PV',
   'MAPPING_1_FIELD' => 'other',
   'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'other',
   #
-  # Virtual mapping: no topic, calculated from MAPPING_0 and MAPPING_1
+  # Virtual mapping: no topic, calculated from power and other
   'MAPPING_2_MEASUREMENT' => 'PV',
   'MAPPING_2_FIELD' => 'shadow_power',
   'MAPPING_2_TYPE' => 'integer',
-  'MAPPING_2_FORMULA' => '{MAPPING_0} + {MAPPING_1}',
+  'MAPPING_2_FORMULA' => '{power} + {other}',
   #
   # Unrelated topic, only used to trigger a virtual mapping recalculation
   'MAPPING_3_TOPIC' => 'sensor/decoy',
@@ -619,11 +623,11 @@ describe Mapper do
 
     it 'formats a virtual mapping including its formula' do
       expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[0])).to eq(
-        'PV:total_power (integer) = {MAPPING_0} + {MAPPING_1}',
+        'PV:total_power (integer) = {inverter_power} + {house_power}',
       )
 
       expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[2])).to eq(
-        'PV:net_power_plus (+) PV:net_power_minus (-) (integer) = {MAPPING_0} - {MAPPING_1}',
+        'PV:net_power_plus (+) PV:net_power_minus (-) (integer) = {inverter_power} - {house_power}',
       )
     end
 
@@ -702,20 +706,20 @@ describe Mapper do
         [{ field: 'other', measurement: 'PV', value: 5 }],
       )
       expect(logger.warn_messages).to include(
-        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: last received 31s ago},
+        %r{Formula for shadow_power.*power \[sensor/power\]: last received 31s ago},
       )
       expect(logger.warn_messages).to include(/exceeds MAX_AGE of 30s/)
     end
 
     it 'names all missing or outdated references, not just the first one' do
-      # Neither MAPPING_0 nor MAPPING_1 has ever received a value
+      # Neither "power" nor "other" has ever received a value
       hash = mapper.records_for('sensor/decoy', '1')
 
       expect(hash).to eq(
         [{ field: 'decoy', measurement: 'PV', value: 1 }],
       )
       expect(logger.warn_messages).to include(
-        %r{Formula for shadow_power.*MAPPING_0 \[sensor/power\]: never received.*MAPPING_1 \[sensor/other\]: never received},
+        %r{Formula for shadow_power.*power \[sensor/power\]: never received.*other \[sensor/other\]: never received},
       )
     end
   end

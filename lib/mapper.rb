@@ -52,6 +52,7 @@ class Mapper
              "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
              "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
              "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
+             "#{", named '#{mapping[:name]}'" if mapping[:name]}" \
              ')'
   end
 
@@ -94,8 +95,8 @@ class Mapper
   end
 
   # Describes which of the mapping's referenced values are missing or expired,
-  # e.g. " (MAPPING_0 [sensor/power]: never received)". Falls back to a
-  # generic note if the formula doesn't reference any (currently) unknown mapping.
+  # e.g. " (washer [sensor/power]: never received)". Falls back to a generic
+  # note if the formula doesn't reference any (currently) unknown mapping.
   def missing_references_note(mapping)
     missing = missing_references(mapping)
     return ' (missing or outdated values)' if missing.empty?
@@ -128,13 +129,14 @@ class Mapper
     "last received #{age}s ago, exceeds MAX_AGE of #{max_age_by_key[key].to_i}s"
   end
 
-  # Remember the latest value of a mapping (keyed by "MAPPING_<group>"), along
+  # Remember the latest value of a mapping under its MAPPING_X_NAME, along
   # with the time it was received, so virtual mappings can reference it via a
-  # placeholder like "{MAPPING_1}" - and so it can expire via MAX_AGE.
+  # placeholder like "{washer}" - and so it can expire via MAX_AGE. A mapping
+  # without a NAME can't be referenced, so there's nothing to remember for it.
   def remember_value(mapping, value)
-    return if value.nil?
+    return if value.nil? || mapping[:name].nil?
 
-    last_values[mapping_key(mapping)] = { value:, received_at: monotonic_time }
+    last_values[mapping[:name]] = { value:, received_at: monotonic_time }
   end
 
   # Values for use in virtual mapping formulas, excluding any mapping whose
@@ -153,11 +155,8 @@ class Mapper
   end
 
   def mapping_by_key
-    @mapping_by_key ||= config.mappings.to_h { |mapping| [mapping_key(mapping), mapping] }
-  end
-
-  def mapping_key(mapping)
-    "MAPPING_#{mapping[:mapping_group]}"
+    @mapping_by_key ||=
+      config.mappings.select { |mapping| mapping[:name] }.to_h { |mapping| [mapping[:name], mapping] }
   end
 
   def last_values
