@@ -250,22 +250,43 @@ class Config
 
       validate_name!(mapping, index)
       validate_max_age!(mapping)
+      validate_aggregate_interval!(mapping)
+      validate_heartbeat_interval!(mapping)
       validate_destination!(mapping)
     end
   end
 
   def validate_max_age!(mapping)
-    max_age = mapping[:max_age]
-    return unless max_age
+    return unless mapping[:max_age]
 
     unless mapping[:name]
       raise Config::Error,
             "Variable #{mapping_var(mapping, :max_age)} requires #{mapping_var(mapping, :name)} to be set"
     end
 
-    return if max_age.match?(/\A\d+\z/) && max_age.to_i.positive?
+    validate_seconds!(mapping, :max_age)
+  end
 
-    invalid!(mapping, :max_age, "#{max_age}. Must be a positive number of seconds")
+  def validate_aggregate_interval!(mapping)
+    return unless mapping[:aggregate_interval]
+
+    validate_seconds!(mapping, :aggregate_interval)
+  end
+
+  def validate_heartbeat_interval!(mapping)
+    return unless mapping[:heartbeat_interval]
+
+    validate_seconds!(mapping, :heartbeat_interval)
+  end
+
+  # Every duration is a whole positive number of seconds. Mapper reads it with
+  # to_f, which turns a typo into 0.0 - a value that silently disables the
+  # option it belongs to. So the error is reported here instead.
+  def validate_seconds!(mapping, key)
+    value = mapping[key]
+    return if value.match?(/\A\d+\z/) && value.to_i.positive?
+
+    invalid!(mapping, key, "#{value}. Must be a positive number of seconds")
   end
 
   # A mapping without a topic is virtual and gets its value from a formula.

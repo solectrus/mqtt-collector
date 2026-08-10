@@ -577,6 +577,18 @@ describe Config do
       # Invalid dedup
       [:merge, { 'MAPPING_0_DEDUP' => 'this-is-no-boolean' },
        'Variable MAPPING_0_DEDUP is invalid: this-is-no-boolean. Must be one of: true, false',],
+      # Invalid aggregate_interval
+      [:merge, { 'MAPPING_0_AGGREGATE_INTERVAL' => 'abc' },
+       'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: abc. Must be a positive number of seconds',],
+      [:merge, { 'MAPPING_0_AGGREGATE_INTERVAL' => '0' },
+       'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: 0. Must be a positive number of seconds',],
+      [:merge, { 'MAPPING_0_AGGREGATE_INTERVAL' => '-5' },
+       'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: -5. Must be a positive number of seconds',],
+      # Invalid heartbeat_interval
+      [:merge, { 'MAPPING_0_DEDUP' => 'true', 'MAPPING_0_HEARTBEAT_INTERVAL' => 'abc' },
+       'Variable MAPPING_0_HEARTBEAT_INTERVAL is invalid: abc. Must be a positive number of seconds',],
+      [:merge, { 'MAPPING_0_DEDUP' => 'true', 'MAPPING_0_HEARTBEAT_INTERVAL' => '0' },
+       'Variable MAPPING_0_HEARTBEAT_INTERVAL is invalid: 0. Must be a positive number of seconds',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)
