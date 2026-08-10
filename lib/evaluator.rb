@@ -55,9 +55,11 @@ class Evaluator
   # operators (==, !=) happily compare against an explicit nil instead of
   # raising, so a bound-but-nil variable would silently be treated as a real,
   # distinct value rather than "unknown" - unlike arithmetic operators, which
-  # do raise (and get rescued below into an overall nil result). Leaving the
-  # variable out entirely makes Dentaku treat it as unbound, which errors out
-  # (rescued into nil) consistently for every operator.
+  # do raise. Leaving the variable out entirely makes Dentaku treat it as
+  # unbound, which raises Dentaku::UnboundVariableError for every operator.
+  # Dentaku::Calculator#evaluate, which Dentaku() calls, rescues all of these
+  # errors and returns nil, so an unknown value gives an unresolved result.
+  # A false value is a real value and stays bound - only nil is skipped.
   def bound_values
     self.class.variables_in(expression).filter_map do |variable|
       val = value(variable)
