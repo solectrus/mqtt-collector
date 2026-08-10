@@ -243,16 +243,10 @@ class Config
         validate_mapping!(mapping, :null_to_zero, allow_list: %w[true false])
       end
 
-      if mapping[:skip_write]
-        validate_mapping!(mapping, :skip_write, allow_list: %w[true false])
-      end
-
-      if mapping[:dedup]
-        validate_mapping!(mapping, :dedup, allow_list: %w[true false])
-      end
-
       validate_name!(mapping, index)
       validate_max_age!(mapping)
+      validate_skip_write!(mapping)
+      validate_dedup!(mapping)
       validate_aggregate_interval!(mapping)
       validate_heartbeat_interval!(mapping)
       validate_destination!(mapping)
@@ -270,11 +264,35 @@ class Config
     validate_seconds!(mapping, :max_age)
   end
 
+  # SKIP_WRITE keeps a value in memory, so a formula can read it. Without a
+  # MAPPING_X_NAME no formula can reference the value, and the mapping does
+  # nothing at all.
+  def validate_skip_write!(mapping)
+    return unless mapping[:skip_write]
+
+    validate_mapping!(mapping, :skip_write, allow_list: %w[true false])
+    return unless mapping[:skip_write] == 'true'
+    return if mapping[:name]
+
+    raise Config::Error,
+          "Variable #{mapping_var(mapping, :skip_write)}=true requires " \
+          "#{mapping_var(mapping, :name)} to be set"
+  end
+
+  def validate_dedup!(mapping)
+    return unless mapping[:dedup]
+
+    validate_mapping!(mapping, :dedup, allow_list: %w[true false])
+    validate_write_option!(mapping, :dedup) if mapping[:dedup] == 'true'
+  end
+
   # Averaging a string or a boolean raises a TypeError on every message, and
   # Loop reports it once per message instead of once at start. So the
   # combination is refused here.
   def validate_aggregate_interval!(mapping)
     return unless mapping[:aggregate_interval]
+
+    validate_write_option!(mapping, :aggregate_interval)
 
     unless NUMERIC_MAPPING_TYPES.include?(mapping[:type])
       invalid!(mapping, :aggregate_interval,
@@ -285,10 +303,29 @@ class Config
     validate_seconds!(mapping, :aggregate_interval)
   end
 
+  # The heartbeat is the interval MAPPING_X_DEDUP holds a repeated value back
+  # for. Without it, the variable does nothing.
   def validate_heartbeat_interval!(mapping)
     return unless mapping[:heartbeat_interval]
 
+    unless mapping[:dedup] == 'true'
+      raise Config::Error,
+            "Variable #{mapping_var(mapping, :heartbeat_interval)} requires " \
+            "#{mapping_var(mapping, :dedup)}=true"
+    end
+
     validate_seconds!(mapping, :heartbeat_interval)
+  end
+
+  # An option that only controls writing does nothing on a mapping that is
+  # never written. Naming it is better than ignoring it, because a variable
+  # without effect is a mistake in the configuration.
+  def validate_write_option!(mapping, key)
+    return unless mapping[:skip_write] == 'true'
+
+    invalid!(mapping, key,
+             "it has no effect, because #{mapping_var(mapping, :skip_write)}=true " \
+             'stops every write of this mapping',)
   end
 
   # Every duration is a whole positive number of seconds. Mapper reads it with

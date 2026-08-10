@@ -591,6 +591,23 @@ describe Config do
       [:merge, { 'MAPPING_0_TYPE' => 'boolean', 'MAPPING_0_AGGREGATE_INTERVAL' => '5' },
        'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: boolean values cannot be averaged. ' \
        'MAPPING_0_TYPE must be one of: integer, float',],
+      # heartbeat_interval requires dedup
+      [:merge, { 'MAPPING_0_HEARTBEAT_INTERVAL' => '60' },
+       'Variable MAPPING_0_HEARTBEAT_INTERVAL requires MAPPING_0_DEDUP=true',],
+      [:merge, { 'MAPPING_0_DEDUP' => 'false', 'MAPPING_0_HEARTBEAT_INTERVAL' => '60' },
+       'Variable MAPPING_0_HEARTBEAT_INTERVAL requires MAPPING_0_DEDUP=true',],
+      # skip_write requires a name, otherwise no formula can read the value
+      # that is kept in memory
+      [:merge, { 'MAPPING_0_SKIP_WRITE' => 'true' },
+       'Variable MAPPING_0_SKIP_WRITE=true requires MAPPING_0_NAME to be set',],
+      # Options that cannot take effect on a mapping that is never written
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_SKIP_WRITE' => 'true', 'MAPPING_0_DEDUP' => 'true' },
+       'Variable MAPPING_0_DEDUP is invalid: it has no effect, because MAPPING_0_SKIP_WRITE=true ' \
+       'stops every write of this mapping',],
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_SKIP_WRITE' => 'true',
+                 'MAPPING_0_AGGREGATE_INTERVAL' => '5', },
+       'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: it has no effect, because ' \
+       'MAPPING_0_SKIP_WRITE=true stops every write of this mapping',],
       # Invalid heartbeat_interval
       [:merge, { 'MAPPING_0_DEDUP' => 'true', 'MAPPING_0_HEARTBEAT_INTERVAL' => 'abc' },
        'Variable MAPPING_0_HEARTBEAT_INTERVAL is invalid: abc. Must be a positive number of seconds',],

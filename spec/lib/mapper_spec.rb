@@ -460,6 +460,7 @@ SKIP_WRITE_ENV = BASE_ENV.merge(
   # Skipped mapping without FIELD/MEASUREMENT at all
   'MAPPING_3_TOPIC' => 'sensor/heatpump',
   'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'heatpump',
   'MAPPING_3_SKIP_WRITE' => 'true',
 ).freeze
 
@@ -1347,7 +1348,7 @@ describe Mapper do
 
       expect(hash).to eq([])
       expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
-        '(no InfluxDB field) (integer, not written to InfluxDB)',
+        "(no InfluxDB field) (integer, named 'heatpump', not written to InfluxDB)",
       )
     end
   end

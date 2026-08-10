@@ -256,6 +256,7 @@ describe Config, '#mapping' do
         {
           'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
           'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_NAME' => 'inverter_power',
           'MAPPING_0_SKIP_WRITE' => 'true',
         },
       )
@@ -267,6 +268,7 @@ describe Config, '#mapping' do
           {
             topic: 'senec/0/ENERGY/GUI_INVERTER_POWER',
             type: 'integer',
+            name: 'inverter_power',
             skip_write: 'true',
             mapping_group: '0',
           },
