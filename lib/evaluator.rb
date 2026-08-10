@@ -1,5 +1,10 @@
 require 'bigdecimal'
 
+# Dentaku tokenizes and parses an expression again on every evaluation, which
+# costs more than the calculation itself. Every expression comes from the
+# configuration and never changes, so the cache stays small.
+Dentaku.enable_ast_cache!
+
 class Evaluator
   attr_reader :expression, :data
 
