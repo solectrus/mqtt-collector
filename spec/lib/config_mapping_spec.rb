@@ -1,4 +1,5 @@
 require 'config'
+require 'mapper'
 
 describe Config, '#mapping' do
   subject(:mappings) { config.mappings }
@@ -226,6 +227,26 @@ describe Config, '#mapping' do
       renumbered_formula = renumbered.find { |mapping| mapping[:formula] }
 
       expect(original_formula[:formula]).to eq(renumbered_formula[:formula])
+    end
+  end
+
+  # The example file is what users copy from, so a typo in it costs them a
+  # failing start. Nothing else validates it.
+  context 'with the shipped .env.example' do
+    let(:env) { Dotenv.parse('.env.example') }
+
+    it 'is accepted as a valid configuration' do
+      expect(mappings).not_to be_empty
+    end
+
+    it 'calculates the virtual mapping it documents' do
+      mapper = Mapper.new(config:)
+      mapper.records_for('senec/0/ENERGY/GUI_HOUSE_POW', '1200')
+      mapper.records_for('senec/0/WALLBOX/APPARENT_CHARGING_POWER/0', '700')
+
+      expect(mapper.records_for('somewhere/HEATPUMP/POWER', '300')).to include(
+        { measurement: 'Household', field: 'base_load', value: 200 },
+      )
     end
   end
 end
