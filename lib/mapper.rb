@@ -115,7 +115,7 @@ class Mapper
 
   # If MAPPING_X_DEDUP is set, a record is only passed through when its value
   # actually changed, or every MAPPING_X_HEARTBEAT_INTERVAL seconds (default
-  # 60) regardless of the value, to show that the sender is still alive. 
+  # 60) regardless of the value, to show that the sender is still alive.
   def deduped(mapping, records)
     return records unless mapping[:dedup] == 'true'
 
