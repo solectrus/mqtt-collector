@@ -181,7 +181,8 @@ EXPECTED_TOPICS = %w[
   somewhere/power-negative
 ].freeze
 
-VIRTUAL_ENV = {
+# The connection settings every example below needs, but none of them is about
+BASE_ENV = {
   'MQTT_HOST' => '1.2.3.4',
   'MQTT_PORT' => '1883',
   # ---
@@ -191,7 +192,9 @@ VIRTUAL_ENV = {
   'INFLUX_TOKEN' => 'this.is.just.an.example',
   'INFLUX_ORG' => 'solectrus',
   'INFLUX_BUCKET' => 'my-bucket',
-  # ---
+}.freeze
+
+VIRTUAL_ENV = BASE_ENV.merge(
   'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'inverter_power',
@@ -224,19 +227,9 @@ VIRTUAL_ENV = {
   'MAPPING_4_FIELD_NEGATIVE' => 'net_power_minus',
   'MAPPING_4_TYPE' => 'integer',
   'MAPPING_4_FORMULA' => '{inverter_power} - {house_power}',
-}.freeze
+).freeze
 
-MAX_AGE_ENV = {
-  'MQTT_HOST' => '1.2.3.4',
-  'MQTT_PORT' => '1883',
-  # ---
-  'INFLUX_HOST' => 'influx.example.com',
-  'INFLUX_SCHEMA' => 'https',
-  'INFLUX_PORT' => '443',
-  'INFLUX_TOKEN' => 'this.is.just.an.example',
-  'INFLUX_ORG' => 'solectrus',
-  'INFLUX_BUCKET' => 'my-bucket',
-  # ---
+MAX_AGE_ENV = BASE_ENV.merge(
   'MAPPING_0_TOPIC' => 'sensor/power',
   'MAPPING_0_MEASUREMENT' => 'PV',
   'MAPPING_0_FIELD' => 'power',
@@ -261,7 +254,7 @@ MAX_AGE_ENV = {
   'MAPPING_3_MEASUREMENT' => 'PV',
   'MAPPING_3_FIELD' => 'decoy',
   'MAPPING_3_TYPE' => 'integer',
-}.freeze
+).freeze
 
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
@@ -601,10 +594,7 @@ describe Mapper do
   end
 
   context 'with virtual mappings' do
-    subject(:mapper) { described_class.new(config:) }
-
     let(:config) { Config.new(VIRTUAL_ENV, logger:) }
-    let(:logger) { MemoryLogger.new }
 
     it 'does not subscribe to a topic for virtual mappings' do
       expect(mapper.topics).to eq(
@@ -673,10 +663,7 @@ describe Mapper do
   end
 
   context 'with MAPPING_X_MAX_AGE' do
-    subject(:mapper) { described_class.new(config:) }
-
     let(:config) { Config.new(MAX_AGE_ENV, logger:) }
-    let(:logger) { MemoryLogger.new }
 
     it 'still uses a value within MAX_AGE' do
       allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
