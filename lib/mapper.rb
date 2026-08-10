@@ -49,12 +49,14 @@ class Mapper
         "#{mapping[:measurement]}:#{mapping[:field]}"
       end
 
-    result + ' (' \
-             "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}" \
-             "#{" ≤ #{mapping[:max]}" if mapping[:max]}" \
-             "#{', converting NULL to 0' if mapping[:null_to_zero] == 'true'}" \
-             "#{", named '#{mapping[:name]}'" if mapping[:name]}" \
-             ')'
+    details = [
+      "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}#{" ≤ #{mapping[:max]}" if mapping[:max]}",
+      ('converting NULL to 0' if mapping[:null_to_zero] == 'true'),
+      ("named '#{mapping[:name]}'" if mapping[:name]),
+      ("expiring after #{mapping[:max_age]}s" if mapping[:max_age]),
+    ].compact
+
+    "#{result} (#{details.join(', ')})"
   end
 
   def records_for_mapping(mapping, message, updated)

@@ -705,6 +705,12 @@ describe Mapper do
       )
     end
 
+    it 'formats a named mapping including its name' do
+      expect(mapper.formatted_mapping('senec/0/ENERGY/GUI_INVERTER_POWER')).to eq(
+        "PV:inverter_power (integer, named 'inverter_power')",
+      )
+    end
+
     it 'formats a virtual mapping including its formula' do
       expect(mapper.formatted_virtual_mapping(mapper.virtual_mappings[0])).to eq(
         'PV:total_power (integer) = {inverter_power} + {house_power}',
@@ -836,6 +842,12 @@ describe Mapper do
 
   context 'with MAPPING_X_MAX_AGE' do
     let(:config) { Config.new(MAX_AGE_ENV, logger:) }
+
+    it 'shows the expiry in a formatted mapping' do
+      expect(mapper.formatted_mapping('sensor/power')).to eq(
+        "PV:power (integer, named 'power', expiring after 30s)",
+      )
+    end
 
     it 'still uses a value within MAX_AGE' do
       allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
