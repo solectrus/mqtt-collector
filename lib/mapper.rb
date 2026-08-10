@@ -73,7 +73,7 @@ class Mapper
       next [] unless config.references_for(mapping).intersect?(updated)
 
       value = virtual_value_from(mapping)
-      remember_value(mapping, value, updated)
+      remember_value(mapping, value, updated, inputs: config.references_for(mapping))
 
       map_value(mapping, value)
     end
@@ -150,11 +150,16 @@ class Mapper
     last_values.key?(key) ? :expired : :never
   end
 
+  # The MAX_AGE named here is the one that actually expired the value, which
+  # for a virtual mapping can be inherited from one of its inputs.
   def reference_status(key)
     return 'never received' if reference_state(key) == :never
 
-    age = (monotonic_time - last_values[key][:received_at]).round
-    "last received #{age}s ago, exceeds MAX_AGE of #{max_age_by_key[key].to_i}s"
+    entry = last_values[key]
+    age = (monotonic_time - entry[:received_at]).round
+    max_age = (entry[:expires_at] - entry[:received_at]).round
+
+    "last received #{age}s ago, exceeds MAX_AGE of #{max_age}s"
   end
 
   # Remember the latest value of a mapping under its MAPPING_X_NAME, along
@@ -163,19 +168,40 @@ class Mapper
   # without a NAME can't be referenced, so there's nothing to remember for it.
   # The name goes to "updated", which selects the virtual mappings to
   # recalculate.
-  def remember_value(mapping, value, updated)
+  def remember_value(mapping, value, updated, inputs: [])
     return if value.nil? || mapping[:name].nil?
 
-    last_values[mapping[:name]] = { value:, received_at: monotonic_time }
+    last_values[mapping[:name]] = { value:, **freshness(mapping, inputs) }
     updated << mapping[:name]
   end
 
-  # Values for use in virtual mapping formulas, excluding any mapping whose
-  # last value is older than its own MAPPING_X_MAX_AGE (in seconds), if set.
+  # When a value was received, and when it stops being usable (nil = never).
+  # A calculated value inherits both from the oldest value it was calculated
+  # from: it is only as fresh as its inputs, and expires as soon as the first
+  # of them does. Without that, MAX_AGE on a source mapping would stop the
+  # first link of a chain only. A virtual mapping in between never expires by
+  # itself, so everything after it would keep writing from a stale input.
+  def freshness(mapping, inputs)
+    now = monotonic_time
+    max_age = max_age_by_key[mapping[:name]]
+    entries = inputs.filter_map { |key| last_values[key] }
+
+    {
+      received_at: [now, *entries.map { |entry| entry[:received_at] }].min,
+      expires_at: [
+        (now + max_age if max_age),
+        *entries.map { |entry| entry[:expires_at] },
+      ].compact.min,
+    }
+  end
+
+  # Values for use in virtual mapping formulas, excluding every value that
+  # outlived its MAPPING_X_MAX_AGE - its own, or an inherited one.
   def fresh_values
+    now = monotonic_time
+
     last_values.filter_map do |key, entry|
-      max_age = max_age_by_key[key]
-      next if max_age && (monotonic_time - entry[:received_at]) > max_age
+      next if entry[:expires_at] && now > entry[:expires_at]
 
       [key, entry[:value]]
     end.to_h

@@ -319,6 +319,36 @@ MAX_AGE_ENV = BASE_ENV.merge(
   'MAPPING_4_FORMULA' => '{power} + {other} + {decoy}',
 ).freeze
 
+# A chain in which only the source mapping has a MAX_AGE. The virtual mapping
+# in between has none, so it can only expire by inheriting one.
+CHAIN_MAX_AGE_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'power',
+  'MAPPING_0_MAX_AGE' => '30',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/other',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'other',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'other',
+  #
+  # Virtual, calculated from power alone - no MAX_AGE of its own
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'doubled',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{power} * 2',
+  'MAPPING_2_NAME' => 'doubled',
+  #
+  # Virtual, one link further down the chain
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'total',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_FORMULA' => '{doubled} + {other}',
+).freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -838,6 +868,36 @@ describe Mapper do
         %r{Formula for shadow_power.*power \[sensor/power\]: last received 31s ago},
       )
       expect(logger.warn_messages).to include(/exceeds MAX_AGE of 30s/)
+    end
+
+    context 'when the expired value feeds a chain' do
+      let(:config) { Config.new(CHAIN_MAX_AGE_ENV, logger:) }
+
+      it 'stops the whole chain, not just the first virtual mapping' do
+        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+        expect(mapper.records_for('sensor/power', '100')).to include(
+          { field: 'doubled', measurement: 'PV', value: 200 },
+        )
+
+        # Still fresh, so the chain reaches "total". Only "other" changed, so
+        # "doubled" is not recalculated here - it keeps the value from above.
+        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1010.0)
+        expect(mapper.records_for('sensor/other', '5')).to include(
+          { field: 'total', measurement: 'PV', value: 205 },
+        )
+
+        # 31 seconds after "power" arrived - "doubled" has no MAX_AGE of its
+        # own, so it can only expire by inheriting the one from "power"
+        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+        hash = mapper.records_for('sensor/other', '5')
+
+        expect(hash).to eq(
+          [{ field: 'other', measurement: 'PV', value: 5 }],
+        )
+        expect(logger.warn_messages).to include(
+          /Formula for total.*doubled \[virtual\]: last received 31s ago, exceeds MAX_AGE of 30s/,
+        )
+      end
     end
 
     it 'names all missing or outdated references, not just the first one' do
