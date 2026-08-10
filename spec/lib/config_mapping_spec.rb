@@ -148,6 +148,29 @@ describe Config, '#mapping' do
     end
   end
 
+  context 'with blank variables (e.g. MAPPING_X_TOPIC= from a generated .env)' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_MEASUREMENT' => 'PV',
+          'MAPPING_0_FIELD' => 'inverter_power',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_NAME' => 'inverter_power',
+          'MAPPING_1_TOPIC' => '  ',
+          'MAPPING_1_MEASUREMENT' => 'PV',
+          'MAPPING_1_FIELD' => 'inverter_power_doubled',
+          'MAPPING_1_TYPE' => 'integer',
+          'MAPPING_1_FORMULA' => '{inverter_power} * 2',
+        },
+      )
+    end
+
+    it 'drops them, so a blank topic makes the mapping virtual' do
+      expect(mappings[1]).not_to have_key(:topic)
+    end
+  end
+
   context 'when a referenced mapping is renumbered (e.g. by HELIOS re-generating the config)' do
     def env_with_inverter_at(index)
       other_env.merge(

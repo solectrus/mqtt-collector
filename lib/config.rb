@@ -3,6 +3,12 @@ require 'null_logger'
 
 MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
 MAPPING_TYPES = %w[integer float string boolean].freeze
+# Evaluator replaces every non-alphanumeric character of a formula variable
+# by an underscore and downcases it. Names that differ in those characters
+# only (my-power and my_power, or Washer and washer) would become the same
+# variable and silently return a wrong value, so a name is restricted to what
+# survives that step unchanged.
+MAPPING_NAME_REGEX = /\A[a-z_][a-z0-9_]*\z/
 DEPRECATED_ENV = {
   'MQTT_TOPIC_HOUSE_POW' => %w[house_power integer],
   'MQTT_TOPIC_GRID_POW' => %w[grid_power integer],
@@ -95,6 +101,7 @@ class Config
         values
           .to_h
           .transform_keys { |key| key.match(MAPPING_REGEX)[2].downcase.to_sym }
+          .reject { |_key, value| blank?(value) }
           .merge(mapping_group:)
       end
       .values
@@ -184,95 +191,117 @@ class Config
   def validate_mappings!
     mappings.each_with_index do |mapping, index|
       if virtual_mapping?(mapping)
-        validate_mapping!(index, :formula)
-        validate_mapping!(index, :json_key, present: false)
-        validate_mapping!(index, :json_path, present: false)
-        validate_mapping!(index, :json_formula, present: false)
+        validate_mapping!(mapping, :formula)
+        validate_mapping!(mapping, :json_key, present: false)
+        validate_mapping!(mapping, :json_path, present: false)
+        validate_mapping!(mapping, :json_formula, present: false)
       else
-        validate_mapping!(index, :topic)
+        validate_mapping!(mapping, :topic)
       end
 
-      validate_mapping!(index, :type, allow_list: MAPPING_TYPES)
+      validate_mapping!(mapping, :type, allow_list: MAPPING_TYPES)
 
       if mapping[:null_to_zero]
-        validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
+        validate_mapping!(mapping, :null_to_zero, allow_list: %w[true false])
       end
 
-      validate_name!(index)
+      validate_name!(mapping, index)
       validate_max_age!(mapping)
-      validate_destination!(mapping, index)
+      validate_destination!(mapping)
     end
   end
 
   def validate_max_age!(mapping)
-    return unless mapping[:max_age] && !mapping[:name]
+    max_age = mapping[:max_age]
+    return unless max_age
 
-    raise Config::Error,
-          "Variable MAPPING_#{mapping[:mapping_group]}_MAX_AGE requires " \
-          "MAPPING_#{mapping[:mapping_group]}_NAME to be set"
+    unless mapping[:name]
+      raise Config::Error,
+            "Variable #{mapping_var(mapping, :max_age)} requires #{mapping_var(mapping, :name)} to be set"
+    end
+
+    return if max_age.match?(/\A\d+\z/) && max_age.to_i.positive?
+
+    invalid!(mapping, :max_age, "#{max_age}. Must be a positive number of seconds")
   end
 
-  def validate_destination!(mapping, index)
+  def validate_destination!(mapping)
     if mapping[:field_positive] || mapping[:field_negative]
-      validate_mapping!(index, :field_positive)
-      validate_mapping!(index, :field_negative)
-      validate_mapping!(index, :measurement_positive)
-      validate_mapping!(index, :measurement_negative)
+      validate_mapping!(mapping, :field_positive)
+      validate_mapping!(mapping, :field_negative)
+      validate_mapping!(mapping, :measurement_positive)
+      validate_mapping!(mapping, :measurement_negative)
 
-      validate_mapping!(index, :field, present: false)
-      validate_mapping!(index, :measurement, present: false)
+      validate_mapping!(mapping, :field, present: false)
+      validate_mapping!(mapping, :measurement, present: false)
     else
-      validate_mapping!(index, :field)
-      validate_mapping!(index, :measurement)
+      validate_mapping!(mapping, :field)
+      validate_mapping!(mapping, :measurement)
 
-      validate_mapping!(index, :field_negative, present: false)
-      validate_mapping!(index, :field_positive, present: false)
-      validate_mapping!(index, :measurement_positive, present: false)
-      validate_mapping!(index, :measurement_negative, present: false)
+      validate_mapping!(mapping, :field_negative, present: false)
+      validate_mapping!(mapping, :field_positive, present: false)
+      validate_mapping!(mapping, :measurement_positive, present: false)
+      validate_mapping!(mapping, :measurement_negative, present: false)
     end
   end
 
+  # A mapping without a topic computes its value from other mappings. Blank
+  # variables are dropped while reading the ENV, so a topic set to an empty
+  # string arrives here as nil - and Mapper applies the same rule.
   def virtual_mapping?(mapping)
-    mapping[:topic].nil? || mapping[:topic].strip == ''
+    mapping[:topic].nil?
   end
 
   # MAPPING_X_NAME is the optional alias other mappings use to reference this
   # one from a formula (e.g. {washer}), instead of the numeric MAPPING_X index
   # - which shifts whenever a mapping is added or removed further up (e.g. by
   # HELIOS-generated configs), silently pointing a formula at the wrong value.
-  def validate_name!(index)
-    mapping = mappings[index]
+  def validate_name!(mapping, index)
     name = mapping[:name]
     return unless name
 
-    var = "MAPPING_#{mapping[:mapping_group]}_NAME"
-
-    if name.strip == ''
-      raise Config::Error, "Missing variable: #{var}"
-    elsif name == 'value'
-      raise Config::Error, "Variable #{var} is invalid: \"value\" is reserved for MAPPING_X_FORMULA"
-    elsif name.match?(/[{}]/)
-      raise Config::Error, "Variable #{var} is invalid: must not contain { or }"
+    if name == 'value'
+      invalid!(mapping, :name, '"value" is reserved for MAPPING_X_FORMULA')
+    elsif !name.match?(MAPPING_NAME_REGEX)
+      invalid!(mapping, :name,
+               "#{name}. Must start with a lowercase letter or underscore, " \
+               'followed by lowercase letters, digits or underscores',)
     elsif mappings.each_with_index.any? { |other, i| i != index && other[:name] == name }
-      raise Config::Error, "Variable #{var} is invalid: name \"#{name}\" is already used by another mapping"
+      invalid!(mapping, :name, "name \"#{name}\" is already used by another mapping")
     end
   end
 
-  def validate_mapping!(index, key, present: true, allow_list: nil)
-    mapping = mappings[index]
-    var = "MAPPING_#{mapping[:mapping_group]}_#{key.upcase}"
+  # The ENV variable a mapping key comes from, e.g. MAPPING_1_FORMULA
+  def mapping_var(mapping, key)
+    "MAPPING_#{mapping[:mapping_group]}_#{key.upcase}"
+  end
 
+  # Refuses a mapping, naming the ENV variable that must be corrected
+  def invalid!(mapping, key, reason)
+    raise Config::Error, "Variable #{mapping_var(mapping, key)} is invalid: #{reason}"
+  end
+
+  # A variable that holds nothing but whitespace counts as unset
+  def blank?(value)
+    value.nil? || value.strip == ''
+  end
+
+  # Formats references the way they appear in a formula, e.g. "{washer}, {pv}"
+  def braced(references)
+    references.map { |reference| "{#{reference}}" }.join(', ')
+  end
+
+  def validate_mapping!(mapping, key, present: true, allow_list: nil)
     if present
-      if mapping[key].nil? || mapping[key].strip == ''
-        raise Config::Error, "Missing variable: #{var}"
-      end
+      # Only a deprecated mapping can still hold a blank value here, because
+      # mappings_from drops them while reading the ENV
+      raise Config::Error, "Missing variable: #{mapping_var(mapping, key)}" if blank?(mapping[key])
 
       if allow_list && !allow_list.include?(mapping[key])
-        raise Config::Error,
-              "Variable #{var} is invalid: #{mapping[key]}. Must be one of: #{allow_list.join(', ')}"
+        invalid!(mapping, key, "#{mapping[key]}. Must be one of: #{allow_list.join(', ')}")
       end
     elsif mapping[key]
-      raise Config::Error, "Unexpected variable: #{var}"
+      raise Config::Error, "Unexpected variable: #{mapping_var(mapping, key)}"
     end
   end
 end

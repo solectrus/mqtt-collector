@@ -516,16 +516,29 @@ describe Config do
       [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
        'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
       # Invalid name
-      [:merge, { 'MAPPING_0_NAME' => '' }, 'Missing variable: MAPPING_0_NAME'],
       [:merge, { 'MAPPING_0_NAME' => 'value' },
        'Variable MAPPING_0_NAME is invalid: "value" is reserved for MAPPING_X_FORMULA',],
       [:merge, { 'MAPPING_0_NAME' => 'inverter{power}' },
-       'Variable MAPPING_0_NAME is invalid: must not contain { or }',],
+       'Variable MAPPING_0_NAME is invalid: inverter{power}. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
+      [:merge, { 'MAPPING_0_NAME' => 'my-power' },
+       'Variable MAPPING_0_NAME is invalid: my-power. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
+      # Dentaku compares variables case-insensitively, so Washer would collide
+      # with washer in a formula
+      [:merge, { 'MAPPING_0_NAME' => 'Washer' },
+       'Variable MAPPING_0_NAME is invalid: Washer. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
       [:merge, { 'MAPPING_0_NAME' => 'dup', 'MAPPING_1_NAME' => 'dup' },
        'Variable MAPPING_0_NAME is invalid: name "dup" is already used by another mapping',],
       # max_age requires a name
       [:merge, { 'MAPPING_0_MAX_AGE' => '60' },
        'Variable MAPPING_0_MAX_AGE requires MAPPING_0_NAME to be set',],
+      # Invalid max_age
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => 'abc' },
+       'Variable MAPPING_0_MAX_AGE is invalid: abc. Must be a positive number of seconds',],
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => '0' },
+       'Variable MAPPING_0_MAX_AGE is invalid: 0. Must be a positive number of seconds',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)
