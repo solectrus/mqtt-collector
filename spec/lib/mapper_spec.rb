@@ -371,12 +371,49 @@ LOGIC_ENV = {
   'MAPPING_1_FIELD' => 'y',
   'MAPPING_1_TYPE' => 'integer',
   'MAPPING_1_NAME' => 'y',
+  'MAPPING_1_MAX_AGE' => '30',
   #
   # Virtual mapping: no topic, uses IF() with a comparison across mappings
   'MAPPING_2_MEASUREMENT' => 'PV',
   'MAPPING_2_FIELD' => 'different',
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => 'IF({x} != {y}, {x}, 0)',
+}.freeze
+
+BOOLEAN_LOGIC_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/flag',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'flag',
+  'MAPPING_0_TYPE' => 'boolean',
+  'MAPPING_0_NAME' => 'flag',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/x',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'x',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'x',
+  #
+  # Virtual mapping: compares against a false value
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'x_while_off',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => 'IF({flag} == false, {x}, 0)',
+  #
+  # Virtual mapping: the formula is a comparison by itself
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'flag_is_off',
+  'MAPPING_3_TYPE' => 'boolean',
+  'MAPPING_3_FORMULA' => '{flag} == false',
 }.freeze
 
 describe Mapper do
@@ -1001,6 +1038,9 @@ describe Mapper do
       hash = mapper.records_for('sensor/x', '10')
 
       expect(hash).to eq([{ field: 'x', measurement: 'PV', value: 10 }])
+      expect(logger.warn_messages).to include(
+        %r{Formula for different.*y \[sensor/y\]: never received},
+      )
     end
 
     it 'returns 0 (the "else" branch) once both sides are known and equal' do
@@ -1026,6 +1066,79 @@ describe Mapper do
           { field: 'different', measurement: 'PV', value: 20 },
         ],
       )
+    end
+
+    # Without this, an expired value would be compared as a real nil: "20 != nil"
+    # is true, so the formula would keep writing values from a dead sensor.
+    it 'stops comparing once a referenced value is beyond MAX_AGE' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/x', '10')
+      mapper.records_for('sensor/y', '10')
+
+      # 31 seconds later - beyond the MAX_AGE of 30 seconds set on y
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+      hash = mapper.records_for('sensor/x', '20')
+
+      expect(hash).to eq([{ field: 'x', measurement: 'PV', value: 20 }])
+      expect(logger.warn_messages).to include(
+        %r{Formula for different.*y \[sensor/y\]: last received 31s ago, exceeds MAX_AGE of 30s},
+      )
+    end
+  end
+
+  context 'with a false value referenced by a virtual mapping formula' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(BOOLEAN_LOGIC_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    # False is a real value, not an unknown one. It has to survive the whole
+    # chain: it must be remembered, offered to the formula, and kept as a
+    # record - none of these steps may drop it as if it was nil.
+    it 'compares against the false value instead of ignoring it' do
+      expect(mapper.records_for('sensor/flag', 'false')).to eq(
+        [
+          { field: 'flag', measurement: 'PV', value: false },
+          { field: 'flag_is_off', measurement: 'PV', value: true },
+        ],
+      )
+
+      # The next message recalculates only the formulas referencing {x}, so the
+      # false value has to survive in the cache to reach this second result.
+      expect(mapper.records_for('sensor/x', '10')).to eq(
+        [
+          { field: 'x', measurement: 'PV', value: 10 },
+          { field: 'x_while_off', measurement: 'PV', value: 10 },
+        ],
+      )
+    end
+
+    it 'writes a false result of a comparison, instead of dropping the record' do
+      mapper.records_for('sensor/x', '10')
+      hash = mapper.records_for('sensor/flag', 'true')
+
+      expect(hash).to eq(
+        [
+          { field: 'flag', measurement: 'PV', value: true },
+          { field: 'x_while_off', measurement: 'PV', value: 0 },
+          { field: 'flag_is_off', measurement: 'PV', value: false },
+        ],
+      )
+    end
+
+    # IF() resolves only the branch it takes, so the missing {x} in the other
+    # branch does not block the result.
+    it 'calculates a result while a value of the skipped branch is missing' do
+      hash = mapper.records_for('sensor/flag', 'true')
+
+      expect(hash).to eq(
+        [
+          { field: 'flag', measurement: 'PV', value: true },
+          { field: 'x_while_off', measurement: 'PV', value: 0 },
+          { field: 'flag_is_off', measurement: 'PV', value: false },
+        ],
+      )
+      expect(logger.warn_messages).to be_empty
     end
   end
 end
