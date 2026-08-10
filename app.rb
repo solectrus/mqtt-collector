@@ -41,4 +41,12 @@ else
   logger.info "\n"
 end
 
+if mapper.virtual_mappings.any?
+  logger.info "Calculating #{mapper.virtual_mappings.length} virtual mapping(s):"
+  mapper.virtual_mappings.each do |mapping|
+    logger.info "- #{mapper.formatted_virtual_mapping(mapping)}"
+  end
+  logger.info "\n"
+end
+
 Loop.new(config:).start

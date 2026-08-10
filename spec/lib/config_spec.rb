@@ -483,7 +483,9 @@ describe Config do
   describe 'invalid mappings' do
     [
       # Missing keys (for a simple mapping)
-      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_TOPIC'],
+      # Without a topic, the mapping is considered virtual and requires a formula instead
+      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_TOPIC ' \
+                                   '(or MAPPING_0_FORMULA for a virtual mapping without a topic)',],
       [:except, 'MAPPING_0_FIELD', 'Missing variable: MAPPING_0_FIELD'],
       [:except, 'MAPPING_0_MEASUREMENT', 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:except, 'MAPPING_0_TYPE', 'Missing variable: MAPPING_0_TYPE'],
@@ -493,7 +495,9 @@ describe Config do
       [:except, 'MAPPING_4_MEASUREMENT_POSITIVE', 'Missing variable: MAPPING_4_MEASUREMENT_POSITIVE'],
       [:except, 'MAPPING_4_MEASUREMENT_NEGATIVE', 'Missing variable: MAPPING_4_MEASUREMENT_NEGATIVE'],
       # Blank keys (for a simple mapping)
-      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_TOPIC'],
+      # A blank topic is treated the same as a missing one (virtual mapping)
+      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_TOPIC ' \
+                                            '(or MAPPING_0_FORMULA for a virtual mapping without a topic)',],
       [:merge, { 'MAPPING_0_FIELD' => '' }, 'Missing variable: MAPPING_0_FIELD'],
       [:merge, { 'MAPPING_0_MEASUREMENT' => '' }, 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:merge, { 'MAPPING_0_TYPE' => '' }, 'Missing variable: MAPPING_0_TYPE'],
@@ -513,6 +517,60 @@ describe Config do
       # Invalid null_to_zero
       [:merge, { 'MAPPING_0_NULL_TO_ZERO' => 'this-is-no-boolean' },
        'Variable MAPPING_0_NULL_TO_ZERO is invalid: this-is-no-boolean. Must be one of: true, false',],
+      # Invalid name
+      [:merge, { 'MAPPING_0_NAME' => 'value' },
+       'Variable MAPPING_0_NAME is invalid: "value" is reserved for MAPPING_X_FORMULA',],
+      [:merge, { 'MAPPING_0_NAME' => 'inverter{power}' },
+       'Variable MAPPING_0_NAME is invalid: inverter{power}. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
+      [:merge, { 'MAPPING_0_NAME' => 'my-power' },
+       'Variable MAPPING_0_NAME is invalid: my-power. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
+      # Dentaku compares variables case-insensitively, so Washer would collide
+      # with washer in a formula
+      [:merge, { 'MAPPING_0_NAME' => 'Washer' },
+       'Variable MAPPING_0_NAME is invalid: Washer. Must start with a lowercase letter or ' \
+       'underscore, followed by lowercase letters, digits or underscores',],
+      [:merge, { 'MAPPING_0_NAME' => 'dup', 'MAPPING_1_NAME' => 'dup' },
+       'Variable MAPPING_0_NAME is invalid: name "dup" is already used by another mapping',],
+      # max_age requires a name
+      [:merge, { 'MAPPING_0_MAX_AGE' => '60' },
+       'Variable MAPPING_0_MAX_AGE requires MAPPING_0_NAME to be set',],
+      # Formula of a virtual mapping referencing an unknown name
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '{inverter_power} * 2', },
+       'Variable MAPPING_20_FORMULA is invalid: {inverter_power} does not match any MAPPING_X_NAME',],
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '{foo} + {bar}', },
+       'Variable MAPPING_20_FORMULA is invalid: {foo}, {bar} do not match any MAPPING_X_NAME',],
+      # Formula of a virtual mapping without any reference
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '1 + 1', },
+       'Variable MAPPING_20_FORMULA is invalid: it must reference at least one MAPPING_X_NAME, e.g. {washer}',],
+      # Formula referencing another mapping on a mapping that has a topic
+      [:merge, { 'MAPPING_0_NAME' => 'inverter_power', 'MAPPING_1_FORMULA' => '{inverter_power} * 2' },
+       'Variable MAPPING_1_FORMULA is invalid: {inverter_power} cannot be used on a mapping with a topic, ' \
+       'only {value}. Leave out the topic to reference other mappings',],
+      # Formula that cannot be parsed
+      [:merge, { 'MAPPING_0_FORMULA' => '{value} * ) 2' },
+       'Variable MAPPING_0_FORMULA is invalid: too many closing parentheses',],
+      # Invalid max_age
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => 'abc' },
+       'Variable MAPPING_0_MAX_AGE is invalid: abc. Must be a positive number of seconds',],
+      [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => '0' },
+       'Variable MAPPING_0_MAX_AGE is invalid: 0. Must be a positive number of seconds',],
+      # Formula of a virtual mapping referencing itself
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_NAME' => 'total', 'MAPPING_20_FORMULA' => '{total} + 1', },
+       'Variable MAPPING_20_FORMULA is invalid: {total} refers to the mapping itself',],
+      # Two virtual mappings referencing each other
+      [:merge, { 'MAPPING_0_NAME' => 'inverter_power',
+                 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_NAME' => 'total', 'MAPPING_20_FORMULA' => '{doubled} + 1',
+                 'MAPPING_21_MEASUREMENT' => 'PV', 'MAPPING_21_FIELD' => 'doubled', 'MAPPING_21_TYPE' => 'integer',
+                 'MAPPING_21_NAME' => 'doubled', 'MAPPING_21_FORMULA' => '{total} * 2', },
+       'Variable MAPPING_21_FORMULA is invalid: {total} closes a cycle: total -> doubled -> total. ' \
+       'A formula cannot depend on its own result',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)

@@ -1,8 +1,15 @@
 require 'uri'
 require 'null_logger'
+require 'evaluator'
 
 MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
 MAPPING_TYPES = %w[integer float string boolean].freeze
+# Evaluator replaces every non-alphanumeric character of a formula variable
+# by an underscore and downcases it. Names that differ in those characters
+# only (my-power and my_power, or Washer and washer) would become the same
+# variable and silently return a wrong value, so a name is restricted to what
+# survives that step unchanged.
+MAPPING_NAME_REGEX = /\A[a-z_][a-z0-9_]*\z/
 DEPRECATED_ENV = {
   'MQTT_TOPIC_HOUSE_POW' => %w[house_power integer],
   'MQTT_TOPIC_GRID_POW' => %w[grid_power integer],
@@ -64,6 +71,10 @@ class Config
     validate_url!(influx_url)
     validate_url!(mqtt_url)
     validate_mappings!
+
+    # Ordering the virtual mappings also refuses a formula that forms a
+    # cycle, so it has to happen here and not on the first message
+    virtual_mappings
   end
 
   def influx_url
@@ -72,6 +83,31 @@ class Config
 
   def mqtt_url
     "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
+  end
+
+  # A mapping without a topic gets its value from a formula referencing other
+  # mappings. Config decides what that means, so Mapper cannot disagree.
+  #
+  # They come in calculation order: a mapping follows every mapping its
+  # formula references. The order in the ENV therefore does not matter, so a
+  # generated .env (e.g. by HELIOS) keeps working when it inserts a sensor
+  # and renumbers everything after it.
+  def virtual_mappings
+    @virtual_mappings ||= virtual_mappings_in_calculation_order
+  end
+
+  # The mappings a formula can reference, by their MAPPING_X_NAME
+  def mapping_by_name
+    @mapping_by_name ||=
+      mappings.select { |mapping| mapping[:name] }.to_h { |mapping| [mapping[:name], mapping] }
+  end
+
+  # The names a mapping's formula references, e.g. ["washer", "pv"]. A formula
+  # never changes, so it is parsed once instead of once per message.
+  def references_for(mapping)
+    @references_for ||=
+      Hash.new { |cache, formula| cache[formula] = Evaluator.variables_in(formula) }
+    @references_for[mapping[:formula]]
   end
 
   attr_reader :logger
@@ -95,6 +131,7 @@ class Config
         values
           .to_h
           .transform_keys { |key| key.match(MAPPING_REGEX)[2].downcase.to_sym }
+          .reject { |_key, value| blank?(value) }
           .merge(mapping_group:)
       end
       .values
@@ -183,48 +220,233 @@ class Config
 
   def validate_mappings!
     mappings.each_with_index do |mapping, index|
-      validate_mapping!(index, :topic)
-      validate_mapping!(index, :type, allow_list: MAPPING_TYPES)
+      validate_formula_syntax!(mapping, :formula)
+
+      if virtual_mapping?(mapping)
+        validate_formula_present!(mapping)
+        validate_formula_references!(mapping)
+        validate_mapping!(mapping, :json_key, present: false)
+        validate_mapping!(mapping, :json_path, present: false)
+        validate_mapping!(mapping, :json_formula, present: false)
+      else
+        validate_mapping!(mapping, :topic)
+        validate_formula_syntax!(mapping, :json_formula)
+        validate_value_formula!(mapping)
+      end
+
+      validate_mapping!(mapping, :type, allow_list: MAPPING_TYPES)
 
       if mapping[:null_to_zero]
-        validate_mapping!(index, :null_to_zero, allow_list: %w[true false])
+        validate_mapping!(mapping, :null_to_zero, allow_list: %w[true false])
       end
 
-      if mapping[:field_positive] || mapping[:field_negative]
-        validate_mapping!(index, :field_positive)
-        validate_mapping!(index, :field_negative)
-        validate_mapping!(index, :measurement_positive)
-        validate_mapping!(index, :measurement_negative)
-
-        validate_mapping!(index, :field, present: false)
-        validate_mapping!(index, :measurement, present: false)
-      else
-        validate_mapping!(index, :field)
-        validate_mapping!(index, :measurement)
-
-        validate_mapping!(index, :field_negative, present: false)
-        validate_mapping!(index, :field_positive, present: false)
-        validate_mapping!(index, :measurement_positive, present: false)
-        validate_mapping!(index, :measurement_negative, present: false)
-      end
+      validate_name!(mapping, index)
+      validate_max_age!(mapping)
+      validate_destination!(mapping)
     end
   end
 
-  def validate_mapping!(index, key, present: true, allow_list: nil)
-    mapping = mappings[index]
-    var = "MAPPING_#{mapping[:mapping_group]}_#{key.upcase}"
+  def validate_max_age!(mapping)
+    max_age = mapping[:max_age]
+    return unless max_age
 
+    unless mapping[:name]
+      raise Config::Error,
+            "Variable #{mapping_var(mapping, :max_age)} requires #{mapping_var(mapping, :name)} to be set"
+    end
+
+    return if max_age.match?(/\A\d+\z/) && max_age.to_i.positive?
+
+    invalid!(mapping, :max_age, "#{max_age}. Must be a positive number of seconds")
+  end
+
+  # A mapping without a topic is virtual and gets its value from a formula.
+  # If it has neither, a forgotten topic is the more probable cause, so the
+  # error names both variables.
+  def validate_formula_present!(mapping)
+    return if mapping[:formula]
+
+    raise Config::Error,
+          "Missing variable: #{mapping_var(mapping, :topic)} " \
+          "(or #{mapping_var(mapping, :formula)} for a virtual mapping without a topic)"
+  end
+
+  # A broken formula is refused here. Otherwise it fails on every message,
+  # with a warning that cannot tell a syntax error from a missing value.
+  def validate_formula_syntax!(mapping, key)
+    formula = mapping[key]
+    return unless formula
+
+    Evaluator.parse!(formula)
+  rescue Evaluator::Error => e
+    invalid!(mapping, key, e.message)
+  end
+
+  # MAPPING_X_FORMULA on a mapping with a topic calculates from the message
+  # itself, which is available as {value}. The name of another mapping cannot
+  # be resolved there - that is what a virtual mapping is for.
+  def validate_value_formula!(mapping)
+    return unless mapping[:formula]
+
+    unusable = references_for(mapping) - %w[value]
+    return if unusable.empty?
+
+    invalid!(mapping, :formula,
+             "#{braced(unusable)} cannot be used on a mapping with a topic, only {value}. " \
+             'Leave out the topic to reference other mappings',)
+  end
+
+  def validate_formula_references!(mapping)
+    references = references_for(mapping)
+
+    validate_reference_present!(mapping, references)
+    validate_known_references!(mapping, references)
+  end
+
+  # A virtual mapping calculates its value from other mappings. A formula
+  # without a reference is a constant, which no message can ever change.
+  def validate_reference_present!(mapping, references)
+    return unless references.empty?
+
+    invalid!(mapping, :formula, 'it must reference at least one MAPPING_X_NAME, e.g. {washer}')
+  end
+
+  # Every {...} of a virtual mapping's formula must match a MAPPING_X_NAME.
+  # All names are known at start, so a typo is refused here. Otherwise the
+  # mapping stays silent for the whole run, and the log shows the same
+  # message as for a value that did not arrive yet.
+  def validate_known_references!(mapping, references)
+    unknown = references.reject { |reference| mapping_by_name.key?(reference) }
+    return if unknown.empty?
+
+    invalid!(mapping, :formula,
+             "#{braced(unknown)} #{unknown.one? ? 'does' : 'do'} not match any MAPPING_X_NAME",)
+  end
+
+  def virtual_mappings_in_calculation_order
+    ordered = []
+    mappings.each do |mapping|
+      append_after_references(mapping, [], ordered) if virtual_mapping?(mapping)
+    end
+    ordered
+  end
+
+  # Depth-first walk that appends a mapping after every mapping its formula
+  # references. "path" holds the mappings of the current walk, so a formula
+  # leading back into it cannot be calculated at all.
+  #
+  # Identity comparison throughout, because two mappings can hold equal values.
+  def append_after_references(mapping, path, ordered)
+    return if ordered.any? { |other| other.equal?(mapping) }
+
+    references_for(mapping).each do |reference|
+      other = mapping_by_name[reference]
+      next unless virtual_mapping?(other)
+
+      validate_no_cycle!(mapping, reference, other, path)
+      append_after_references(other, path + [mapping], ordered)
+    end
+
+    ordered << mapping
+  end
+
+  # A formula that leads back to a mapping already being calculated has no
+  # value to start from, so it is refused instead of silently using the
+  # result of the message before.
+  def validate_no_cycle!(mapping, reference, other, path)
+    if other.equal?(mapping)
+      invalid!(mapping, :formula, "{#{reference}} refers to the mapping itself")
+    end
+    return unless path.any? { |visited| visited.equal?(other) }
+
+    cycle = path.drop_while { |visited| !visited.equal?(other) } + [mapping, other]
+    invalid!(mapping, :formula,
+             "{#{reference}} closes a cycle: #{cycle.map { |m| label_for(m) }.join(' -> ')}. " \
+             'A formula cannot depend on its own result',)
+  end
+
+  # How a mapping is named in an error, preferring its MAPPING_X_NAME
+  def label_for(mapping)
+    mapping[:name] || "MAPPING_#{mapping[:mapping_group]}"
+  end
+
+  def validate_destination!(mapping)
+    if mapping[:field_positive] || mapping[:field_negative]
+      validate_mapping!(mapping, :field_positive)
+      validate_mapping!(mapping, :field_negative)
+      validate_mapping!(mapping, :measurement_positive)
+      validate_mapping!(mapping, :measurement_negative)
+
+      validate_mapping!(mapping, :field, present: false)
+      validate_mapping!(mapping, :measurement, present: false)
+    else
+      validate_mapping!(mapping, :field)
+      validate_mapping!(mapping, :measurement)
+
+      validate_mapping!(mapping, :field_negative, present: false)
+      validate_mapping!(mapping, :field_positive, present: false)
+      validate_mapping!(mapping, :measurement_positive, present: false)
+      validate_mapping!(mapping, :measurement_negative, present: false)
+    end
+  end
+
+  # A mapping without a topic computes its value from other mappings. Blank
+  # variables are dropped while reading the ENV, so a topic set to an empty
+  # string arrives here as nil - and Mapper applies the same rule.
+  def virtual_mapping?(mapping)
+    mapping[:topic].nil?
+  end
+
+  # MAPPING_X_NAME is the optional alias other mappings use to reference this
+  # one from a formula (e.g. {washer}), instead of the numeric MAPPING_X index
+  # - which shifts whenever a mapping is added or removed further up (e.g. by
+  # HELIOS-generated configs), silently pointing a formula at the wrong value.
+  def validate_name!(mapping, index)
+    name = mapping[:name]
+    return unless name
+
+    if name == 'value'
+      invalid!(mapping, :name, '"value" is reserved for MAPPING_X_FORMULA')
+    elsif !name.match?(MAPPING_NAME_REGEX)
+      invalid!(mapping, :name,
+               "#{name}. Must start with a lowercase letter or underscore, " \
+               'followed by lowercase letters, digits or underscores',)
+    elsif mappings.each_with_index.any? { |other, i| i != index && other[:name] == name }
+      invalid!(mapping, :name, "name \"#{name}\" is already used by another mapping")
+    end
+  end
+
+  # The ENV variable a mapping key comes from, e.g. MAPPING_1_FORMULA
+  def mapping_var(mapping, key)
+    "MAPPING_#{mapping[:mapping_group]}_#{key.upcase}"
+  end
+
+  # Refuses a mapping, naming the ENV variable that must be corrected
+  def invalid!(mapping, key, reason)
+    raise Config::Error, "Variable #{mapping_var(mapping, key)} is invalid: #{reason}"
+  end
+
+  # Formats references the way they appear in a formula, e.g. "{washer}, {pv}"
+  def braced(references)
+    references.map { |reference| "{#{reference}}" }.join(', ')
+  end
+
+  # A variable that holds nothing but whitespace counts as unset
+  def blank?(value)
+    value.nil? || value.strip == ''
+  end
+
+  def validate_mapping!(mapping, key, present: true, allow_list: nil)
     if present
-      if mapping[key].nil? || mapping[key].strip == ''
-        raise Config::Error, "Missing variable: #{var}"
-      end
+      # Only a deprecated mapping can still hold a blank value here, because
+      # mappings_from drops them while reading the ENV
+      raise Config::Error, "Missing variable: #{mapping_var(mapping, key)}" if blank?(mapping[key])
 
       if allow_list && !allow_list.include?(mapping[key])
-        raise Config::Error,
-              "Variable #{var} is invalid: #{mapping[key]}. Must be one of: #{allow_list.join(', ')}"
+        invalid!(mapping, key, "#{mapping[key]}. Must be one of: #{allow_list.join(', ')}")
       end
     elsif mapping[key]
-      raise Config::Error, "Unexpected variable: #{var}"
+      raise Config::Error, "Unexpected variable: #{mapping_var(mapping, key)}"
     end
   end
 end
