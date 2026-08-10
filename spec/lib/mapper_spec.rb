@@ -213,12 +213,13 @@ VIRTUAL_ENV = BASE_ENV.merge(
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => '{inverter_power} + {house_power}',
   #
-  # Virtual mapping: no topic, referencing a name that's never defined anywhere
+  # Virtual mapping: no topic, also referencing a mapping that never receives
+  # a message here, so it stays unresolved for the whole spec
   'MAPPING_3_MEASUREMENT' => 'PV',
   'MAPPING_3_FIELD' => 'missing_ref',
   'MAPPING_3_TYPE' => 'integer',
   'MAPPING_3_NULL_TO_ZERO' => 'true',
-  'MAPPING_3_FORMULA' => '{missing_sensor}',
+  'MAPPING_3_FORMULA' => '{inverter_power} + {battery_power}',
   #
   # Virtual mapping: no topic, with positive/negative fields
   'MAPPING_4_MEASUREMENT_POSITIVE' => 'PV',
@@ -227,6 +228,61 @@ VIRTUAL_ENV = BASE_ENV.merge(
   'MAPPING_4_FIELD_NEGATIVE' => 'net_power_minus',
   'MAPPING_4_TYPE' => 'integer',
   'MAPPING_4_FORMULA' => '{inverter_power} - {house_power}',
+  #
+  'MAPPING_5_TOPIC' => 'senec/0/ENERGY/GUI_BAT_DATA_POWER',
+  'MAPPING_5_MEASUREMENT' => 'PV',
+  'MAPPING_5_FIELD' => 'battery_power',
+  'MAPPING_5_TYPE' => 'integer',
+  'MAPPING_5_NAME' => 'battery_power',
+).freeze
+
+CHAINED_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'power',
+  #
+  # Virtual mapping, referenced by the two below
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'doubled',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'doubled',
+  'MAPPING_1_MAX_AGE' => '30',
+  'MAPPING_1_FORMULA' => '{power} * 2',
+  #
+  # Virtual mapping, chained to the virtual mapping above
+  'MAPPING_2_MEASUREMENT' => 'PV',
+  'MAPPING_2_FIELD' => 'quadrupled',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{doubled} * 2',
+  #
+  'MAPPING_3_TOPIC' => 'sensor/other',
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'other',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'other',
+  #
+  # Virtual mapping combining a virtual and a plain mapping, so a message on
+  # sensor/other recalculates it while "doubled" may be expired
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'sum',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{doubled} + {other}',
+).freeze
+
+# A formula that fails although its reference has a value
+BROKEN_FORMULA_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'power',
+  #
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'ratio',
+  'MAPPING_1_TYPE' => 'float',
+  'MAPPING_1_FORMULA' => '100 / {power}',
 ).freeze
 
 MAX_AGE_ENV = BASE_ENV.merge(
@@ -599,6 +655,7 @@ describe Mapper do
     it 'does not subscribe to a topic for virtual mappings' do
       expect(mapper.topics).to eq(
         %w[
+          senec/0/ENERGY/GUI_BAT_DATA_POWER
           senec/0/ENERGY/GUI_HOUSE_POW
           senec/0/ENERGY/GUI_INVERTER_POWER
         ],

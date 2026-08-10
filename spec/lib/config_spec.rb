@@ -484,7 +484,8 @@ describe Config do
     [
       # Missing keys (for a simple mapping)
       # Without a topic, the mapping is considered virtual and requires a formula instead
-      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_FORMULA'],
+      [:except, 'MAPPING_0_TOPIC', 'Missing variable: MAPPING_0_TOPIC ' \
+                                   '(or MAPPING_0_FORMULA for a virtual mapping without a topic)',],
       [:except, 'MAPPING_0_FIELD', 'Missing variable: MAPPING_0_FIELD'],
       [:except, 'MAPPING_0_MEASUREMENT', 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:except, 'MAPPING_0_TYPE', 'Missing variable: MAPPING_0_TYPE'],
@@ -495,7 +496,8 @@ describe Config do
       [:except, 'MAPPING_4_MEASUREMENT_NEGATIVE', 'Missing variable: MAPPING_4_MEASUREMENT_NEGATIVE'],
       # Blank keys (for a simple mapping)
       # A blank topic is treated the same as a missing one (virtual mapping)
-      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_FORMULA'],
+      [:merge, { 'MAPPING_0_TOPIC' => '' }, 'Missing variable: MAPPING_0_TOPIC ' \
+                                            '(or MAPPING_0_FORMULA for a virtual mapping without a topic)',],
       [:merge, { 'MAPPING_0_FIELD' => '' }, 'Missing variable: MAPPING_0_FIELD'],
       [:merge, { 'MAPPING_0_MEASUREMENT' => '' }, 'Missing variable: MAPPING_0_MEASUREMENT'],
       [:merge, { 'MAPPING_0_TYPE' => '' }, 'Missing variable: MAPPING_0_TYPE'],
@@ -534,6 +536,24 @@ describe Config do
       # max_age requires a name
       [:merge, { 'MAPPING_0_MAX_AGE' => '60' },
        'Variable MAPPING_0_MAX_AGE requires MAPPING_0_NAME to be set',],
+      # Formula of a virtual mapping referencing an unknown name
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '{inverter_power} * 2', },
+       'Variable MAPPING_20_FORMULA is invalid: {inverter_power} does not match any MAPPING_X_NAME',],
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '{foo} + {bar}', },
+       'Variable MAPPING_20_FORMULA is invalid: {foo}, {bar} do not match any MAPPING_X_NAME',],
+      # Formula of a virtual mapping without any reference
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_FORMULA' => '1 + 1', },
+       'Variable MAPPING_20_FORMULA is invalid: it must reference at least one MAPPING_X_NAME, e.g. {washer}',],
+      # Formula referencing another mapping on a mapping that has a topic
+      [:merge, { 'MAPPING_0_NAME' => 'inverter_power', 'MAPPING_1_FORMULA' => '{inverter_power} * 2' },
+       'Variable MAPPING_1_FORMULA is invalid: {inverter_power} cannot be used on a mapping with a topic, ' \
+       'only {value}. Leave out the topic to reference other mappings',],
+      # Formula that cannot be parsed
+      [:merge, { 'MAPPING_0_FORMULA' => '{value} * ) 2' },
+       'Variable MAPPING_0_FORMULA is invalid: too many closing parentheses',],
       # Invalid max_age
       [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => 'abc' },
        'Variable MAPPING_0_MAX_AGE is invalid: abc. Must be a positive number of seconds',],

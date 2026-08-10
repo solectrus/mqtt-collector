@@ -1,5 +1,6 @@
 require 'uri'
 require 'null_logger'
+require 'evaluator'
 
 MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
 MAPPING_TYPES = %w[integer float string boolean].freeze
@@ -78,6 +79,20 @@ class Config
 
   def mqtt_url
     "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
+  end
+
+  # The mappings a formula can reference, by their MAPPING_X_NAME
+  def mapping_by_name
+    @mapping_by_name ||=
+      mappings.select { |mapping| mapping[:name] }.to_h { |mapping| [mapping[:name], mapping] }
+  end
+
+  # The names a mapping's formula references, e.g. ["washer", "pv"]. A formula
+  # never changes, so it is parsed once instead of once per message.
+  def references_for(mapping)
+    @references_for ||=
+      Hash.new { |cache, formula| cache[formula] = Evaluator.variables_in(formula) }
+    @references_for[mapping[:formula]]
   end
 
   attr_reader :logger
@@ -190,13 +205,18 @@ class Config
 
   def validate_mappings!
     mappings.each_with_index do |mapping, index|
+      validate_formula_syntax!(mapping, :formula)
+
       if virtual_mapping?(mapping)
-        validate_mapping!(mapping, :formula)
+        validate_formula_present!(mapping)
+        validate_formula_references!(mapping)
         validate_mapping!(mapping, :json_key, present: false)
         validate_mapping!(mapping, :json_path, present: false)
         validate_mapping!(mapping, :json_formula, present: false)
       else
         validate_mapping!(mapping, :topic)
+        validate_formula_syntax!(mapping, :json_formula)
+        validate_value_formula!(mapping)
       end
 
       validate_mapping!(mapping, :type, allow_list: MAPPING_TYPES)
@@ -223,6 +243,69 @@ class Config
     return if max_age.match?(/\A\d+\z/) && max_age.to_i.positive?
 
     invalid!(mapping, :max_age, "#{max_age}. Must be a positive number of seconds")
+  end
+
+  # A mapping without a topic is virtual and gets its value from a formula.
+  # If it has neither, a forgotten topic is the more probable cause, so the
+  # error names both variables.
+  def validate_formula_present!(mapping)
+    return if mapping[:formula]
+
+    raise Config::Error,
+          "Missing variable: #{mapping_var(mapping, :topic)} " \
+          "(or #{mapping_var(mapping, :formula)} for a virtual mapping without a topic)"
+  end
+
+  # A broken formula is refused here. Otherwise it fails on every message,
+  # with a warning that cannot tell a syntax error from a missing value.
+  def validate_formula_syntax!(mapping, key)
+    formula = mapping[key]
+    return unless formula
+
+    Evaluator.parse!(formula)
+  rescue Evaluator::Error => e
+    invalid!(mapping, key, e.message)
+  end
+
+  # MAPPING_X_FORMULA on a mapping with a topic calculates from the message
+  # itself, which is available as {value}. The name of another mapping cannot
+  # be resolved there - that is what a virtual mapping is for.
+  def validate_value_formula!(mapping)
+    return unless mapping[:formula]
+
+    unusable = references_for(mapping) - %w[value]
+    return if unusable.empty?
+
+    invalid!(mapping, :formula,
+             "#{braced(unusable)} cannot be used on a mapping with a topic, only {value}. " \
+             'Leave out the topic to reference other mappings',)
+  end
+
+  def validate_formula_references!(mapping)
+    references = references_for(mapping)
+
+    validate_reference_present!(mapping, references)
+    validate_known_references!(mapping, references)
+  end
+
+  # A virtual mapping calculates its value from other mappings. A formula
+  # without a reference is a constant, which no message can ever change.
+  def validate_reference_present!(mapping, references)
+    return unless references.empty?
+
+    invalid!(mapping, :formula, 'it must reference at least one MAPPING_X_NAME, e.g. {washer}')
+  end
+
+  # Every {...} of a virtual mapping's formula must match a MAPPING_X_NAME.
+  # All names are known at start, so a typo is refused here. Otherwise the
+  # mapping stays silent for the whole run, and the log shows the same
+  # message as for a value that did not arrive yet.
+  def validate_known_references!(mapping, references)
+    unknown = references.reject { |reference| mapping_by_name.key?(reference) }
+    return if unknown.empty?
+
+    invalid!(mapping, :formula,
+             "#{braced(unknown)} #{unknown.one? ? 'does' : 'do'} not match any MAPPING_X_NAME",)
   end
 
   def validate_destination!(mapping)
@@ -281,14 +364,14 @@ class Config
     raise Config::Error, "Variable #{mapping_var(mapping, key)} is invalid: #{reason}"
   end
 
-  # A variable that holds nothing but whitespace counts as unset
-  def blank?(value)
-    value.nil? || value.strip == ''
-  end
-
   # Formats references the way they appear in a formula, e.g. "{washer}, {pv}"
   def braced(references)
     references.map { |reference| "{#{reference}}" }.join(', ')
+  end
+
+  # A variable that holds nothing but whitespace counts as unset
+  def blank?(value)
+    value.nil? || value.strip == ''
   end
 
   def validate_mapping!(mapping, key, present: true, allow_list: nil)
