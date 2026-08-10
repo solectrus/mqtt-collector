@@ -4,6 +4,9 @@ require 'evaluator'
 
 MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
 MAPPING_TYPES = %w[integer float string boolean].freeze
+# Only a number can be averaged, so MAPPING_X_AGGREGATE_INTERVAL is limited
+# to these types
+NUMERIC_MAPPING_TYPES = %w[integer float].freeze
 # Evaluator replaces every non-alphanumeric character of a formula variable
 # by an underscore and downcases it. Names that differ in those characters
 # only (my-power and my_power, or Washer and washer) would become the same
@@ -267,8 +270,17 @@ class Config
     validate_seconds!(mapping, :max_age)
   end
 
+  # Averaging a string or a boolean raises a TypeError on every message, and
+  # Loop reports it once per message instead of once at start. So the
+  # combination is refused here.
   def validate_aggregate_interval!(mapping)
     return unless mapping[:aggregate_interval]
+
+    unless NUMERIC_MAPPING_TYPES.include?(mapping[:type])
+      invalid!(mapping, :aggregate_interval,
+               "#{mapping[:type]} values cannot be averaged. #{mapping_var(mapping, :type)} " \
+               "must be one of: #{NUMERIC_MAPPING_TYPES.join(', ')}",)
+    end
 
     validate_seconds!(mapping, :aggregate_interval)
   end

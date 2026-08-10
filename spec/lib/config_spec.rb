@@ -584,6 +584,13 @@ describe Config do
        'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: 0. Must be a positive number of seconds',],
       [:merge, { 'MAPPING_0_AGGREGATE_INTERVAL' => '-5' },
        'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: -5. Must be a positive number of seconds',],
+      # AGGREGATE_INTERVAL on a type that cannot be averaged (MAPPING_9 is a string)
+      [:merge, { 'MAPPING_9_AGGREGATE_INTERVAL' => '5' },
+       'Variable MAPPING_9_AGGREGATE_INTERVAL is invalid: string values cannot be averaged. ' \
+       'MAPPING_9_TYPE must be one of: integer, float',],
+      [:merge, { 'MAPPING_0_TYPE' => 'boolean', 'MAPPING_0_AGGREGATE_INTERVAL' => '5' },
+       'Variable MAPPING_0_AGGREGATE_INTERVAL is invalid: boolean values cannot be averaged. ' \
+       'MAPPING_0_TYPE must be one of: integer, float',],
       # Invalid heartbeat_interval
       [:merge, { 'MAPPING_0_DEDUP' => 'true', 'MAPPING_0_HEARTBEAT_INTERVAL' => 'abc' },
        'Variable MAPPING_0_HEARTBEAT_INTERVAL is invalid: abc. Must be a positive number of seconds',],
