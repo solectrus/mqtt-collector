@@ -559,6 +559,18 @@ describe Config do
        'Variable MAPPING_0_MAX_AGE is invalid: abc. Must be a positive number of seconds',],
       [:merge, { 'MAPPING_0_NAME' => 'power', 'MAPPING_0_MAX_AGE' => '0' },
        'Variable MAPPING_0_MAX_AGE is invalid: 0. Must be a positive number of seconds',],
+      # Formula of a virtual mapping referencing itself
+      [:merge, { 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_NAME' => 'total', 'MAPPING_20_FORMULA' => '{total} + 1', },
+       'Variable MAPPING_20_FORMULA is invalid: {total} refers to the mapping itself',],
+      # Two virtual mappings referencing each other
+      [:merge, { 'MAPPING_0_NAME' => 'inverter_power',
+                 'MAPPING_20_MEASUREMENT' => 'PV', 'MAPPING_20_FIELD' => 'total', 'MAPPING_20_TYPE' => 'integer',
+                 'MAPPING_20_NAME' => 'total', 'MAPPING_20_FORMULA' => '{doubled} + 1',
+                 'MAPPING_21_MEASUREMENT' => 'PV', 'MAPPING_21_FIELD' => 'doubled', 'MAPPING_21_TYPE' => 'integer',
+                 'MAPPING_21_NAME' => 'doubled', 'MAPPING_21_FORMULA' => '{total} * 2', },
+       'Variable MAPPING_21_FORMULA is invalid: {total} closes a cycle: total -> doubled -> total. ' \
+       'A formula cannot depend on its own result',],
     ].each do |method_name, argument, error_message|
       it "raises a Config::Error ('#{error_message}')" do
         env = valid_env.public_send(method_name, argument)

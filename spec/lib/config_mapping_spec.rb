@@ -148,6 +148,36 @@ describe Config, '#mapping' do
     end
   end
 
+  context 'with a virtual mapping referencing one defined after it' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_MEASUREMENT' => 'PV',
+          'MAPPING_0_FIELD' => 'inverter_power',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_NAME' => 'inverter_power',
+          # References "doubled", which is defined below it
+          'MAPPING_1_MEASUREMENT' => 'PV',
+          'MAPPING_1_FIELD' => 'total',
+          'MAPPING_1_TYPE' => 'integer',
+          'MAPPING_1_FORMULA' => '{doubled} + 1',
+          'MAPPING_2_MEASUREMENT' => 'PV',
+          'MAPPING_2_FIELD' => 'doubled',
+          'MAPPING_2_TYPE' => 'integer',
+          'MAPPING_2_NAME' => 'doubled',
+          'MAPPING_2_FORMULA' => '{inverter_power} * 2',
+        },
+      )
+    end
+
+    it 'accepts it and calculates the referenced one first' do
+      expect(config.virtual_mappings.map { |mapping| mapping[:field] }).to eq(
+        %w[doubled total],
+      )
+    end
+  end
+
   context 'with blank variables (e.g. MAPPING_X_TOPIC= from a generated .env)' do
     let(:env) do
       other_env.merge(

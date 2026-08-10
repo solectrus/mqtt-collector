@@ -71,6 +71,10 @@ class Config
     validate_url!(influx_url)
     validate_url!(mqtt_url)
     validate_mappings!
+
+    # Ordering the virtual mappings also refuses a formula that forms a
+    # cycle, so it has to happen here and not on the first message
+    virtual_mappings
   end
 
   def influx_url
@@ -79,6 +83,17 @@ class Config
 
   def mqtt_url
     "#{mqtt_schema}://#{mqtt_host}:#{mqtt_port}"
+  end
+
+  # A mapping without a topic gets its value from a formula referencing other
+  # mappings. Config decides what that means, so Mapper cannot disagree.
+  #
+  # They come in calculation order: a mapping follows every mapping its
+  # formula references. The order in the ENV therefore does not matter, so a
+  # generated .env (e.g. by HELIOS) keeps working when it inserts a sensor
+  # and renumbers everything after it.
+  def virtual_mappings
+    @virtual_mappings ||= virtual_mappings_in_calculation_order
   end
 
   # The mappings a formula can reference, by their MAPPING_X_NAME
@@ -306,6 +321,53 @@ class Config
 
     invalid!(mapping, :formula,
              "#{braced(unknown)} #{unknown.one? ? 'does' : 'do'} not match any MAPPING_X_NAME",)
+  end
+
+  def virtual_mappings_in_calculation_order
+    ordered = []
+    mappings.each do |mapping|
+      append_after_references(mapping, [], ordered) if virtual_mapping?(mapping)
+    end
+    ordered
+  end
+
+  # Depth-first walk that appends a mapping after every mapping its formula
+  # references. "path" holds the mappings of the current walk, so a formula
+  # leading back into it cannot be calculated at all.
+  #
+  # Identity comparison throughout, because two mappings can hold equal values.
+  def append_after_references(mapping, path, ordered)
+    return if ordered.any? { |other| other.equal?(mapping) }
+
+    references_for(mapping).each do |reference|
+      other = mapping_by_name[reference]
+      next unless virtual_mapping?(other)
+
+      validate_no_cycle!(mapping, reference, other, path)
+      append_after_references(other, path + [mapping], ordered)
+    end
+
+    ordered << mapping
+  end
+
+  # A formula that leads back to a mapping already being calculated has no
+  # value to start from, so it is refused instead of silently using the
+  # result of the message before.
+  def validate_no_cycle!(mapping, reference, other, path)
+    if other.equal?(mapping)
+      invalid!(mapping, :formula, "{#{reference}} refers to the mapping itself")
+    end
+    return unless path.any? { |visited| visited.equal?(other) }
+
+    cycle = path.drop_while { |visited| !visited.equal?(other) } + [mapping, other]
+    invalid!(mapping, :formula,
+             "{#{reference}} closes a cycle: #{cycle.map { |m| label_for(m) }.join(' -> ')}. " \
+             'A formula cannot depend on its own result',)
+  end
+
+  # How a mapping is named in an error, preferring its MAPPING_X_NAME
+  def label_for(mapping)
+    mapping[:name] || "MAPPING_#{mapping[:mapping_group]}"
   end
 
   def validate_destination!(mapping)
