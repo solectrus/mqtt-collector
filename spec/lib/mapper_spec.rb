@@ -457,11 +457,20 @@ SKIP_WRITE_ENV = BASE_ENV.merge(
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => '{washer} + {dryer}',
   #
-  # Skipped mapping without FIELD/MEASUREMENT at all
+  # Skipped mapping without FIELD/MEASUREMENT at all, so a warning has only
+  # the name to identify it
   'MAPPING_3_TOPIC' => 'sensor/heatpump',
   'MAPPING_3_TYPE' => 'integer',
   'MAPPING_3_NAME' => 'heatpump',
   'MAPPING_3_SKIP_WRITE' => 'true',
+  'MAPPING_3_MAX' => '100',
+  #
+  # Virtual mapping without FIELD/MEASUREMENT, calculated from a value that
+  # never arrives
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_NAME' => 'heatpump_double',
+  'MAPPING_4_SKIP_WRITE' => 'true',
+  'MAPPING_4_FORMULA' => '{washer} + {heatpump}',
 ).freeze
 
 DEDUP_ENV = {
@@ -1348,7 +1357,22 @@ describe Mapper do
 
       expect(hash).to eq([])
       expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
-        "(no InfluxDB field) (integer, named 'heatpump', not written to InfluxDB)",
+        "(no InfluxDB field) (integer ≤ 100, named 'heatpump', not written to InfluxDB)",
+      )
+    end
+
+    it 'names a skipped mapping without a field by its MAPPING_X_NAME' do
+      mapper.records_for('sensor/heatpump', '999')
+
+      expect(logger.warn_messages).to eq(['  Ignoring heatpump: 999 exceeds maximum of 100'])
+    end
+
+    it 'names a skipped virtual mapping without a field in an unresolved formula' do
+      mapper.records_for('sensor/washer', '300') # {heatpump} was never received
+
+      expect(logger.warn_messages).to include(
+        '  Formula for heatpump_double could not be evaluated ' \
+        '(heatpump [sensor/heatpump]: never received), ignoring.',
       )
     end
   end

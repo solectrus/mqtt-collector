@@ -179,8 +179,8 @@ class Mapper
     @aggregation_buffers ||= {}
   end
 
-  # The aggregation buffer is the only place that needs a key per mapping,
-  # because a mapping without a NAME must have one, too.
+  # Identifies a mapping that has no MAPPING_X_NAME, so the aggregation buffer
+  # can hold one entry per mapping.
   def mapping_key(mapping)
     "MAPPING_#{mapping[:mapping_group]}"
   end
@@ -318,9 +318,11 @@ class Mapper
   end
 
   # The field a warning names. A signed mapping has no :field, so its
-  # positive one stands for the pair.
+  # positive one stands for the pair. A mapping with SKIP_WRITE has no field
+  # at all, so its MAPPING_X_NAME stands in - Config requires that name, so a
+  # warning can always be traced back to a mapping.
   def target_field(mapping)
-    mapping[:field] || mapping[:field_positive]
+    mapping[:field] || mapping[:field_positive] || mapping[:name]
   end
 
   def signed?(mapping)
