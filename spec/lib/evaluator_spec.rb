@@ -161,10 +161,41 @@ describe Evaluator do
       expect(described_class.new(expression: '{a} == {b}', data:).run).to be_nil
     end
 
+    it 'returns nil for >, instead of treating the missing value as a real nil' do
+      expect(described_class.new(expression: '{a} > {b}', data:).run).to be_nil
+    end
+
+    it 'returns nil for <=, instead of treating the missing value as a real nil' do
+      expect(described_class.new(expression: '{a} <= {b}', data:).run).to be_nil
+    end
+
     it 'returns nil for IF() using a comparison with the missing value' do
       expect(
         described_class.new(expression: "IF({a} != {b}, {a}, 'unreachable')", data:).run,
       ).to be_nil
+    end
+
+    # Dentaku resolves only the branch it takes, so a missing value in the
+    # other branch does not block the result.
+    it 'returns a result if the missing value is only in the branch IF() skips' do
+      expect(described_class.new(expression: 'IF({a} > 5, {b}, 0)', data:).run).to eq(0)
+    end
+
+    it 'returns nil if the missing value is in the branch IF() takes' do
+      expect(described_class.new(expression: 'IF({a} > 5, 0, {b})', data:).run).to be_nil
+    end
+  end
+
+  # A false value is a real value, unlike a missing one, so it must stay
+  # available to the expression. Skipping unknown values must therefore test
+  # for nil, not for falsiness.
+  context 'with a false value' do
+    let(:data) { { 'flag' => false } }
+
+    it 'compares against it instead of treating it as unknown' do
+      expect(
+        described_class.new(expression: 'IF({flag} == false, 1, 0)', data:).run,
+      ).to eq(1)
     end
   end
 end
