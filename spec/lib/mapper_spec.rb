@@ -435,6 +435,27 @@ AGGREGATE_ENV = BASE_ENV.merge(
   'MAPPING_2_FIELD_NEGATIVE' => 'signed_minus',
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_AGGREGATE_INTERVAL' => '5',
+  #
+  # Aggregated mapping a formula reads
+  'MAPPING_3_TOPIC' => 'sensor/named',
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'named_value',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'named_value',
+  'MAPPING_3_AGGREGATE_INTERVAL' => '5',
+  #
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'named_double',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{named_value} * 2',
+  #
+  # Aggregation and deduplication on the same mapping
+  'MAPPING_5_TOPIC' => 'sensor/both',
+  'MAPPING_5_MEASUREMENT' => 'PV',
+  'MAPPING_5_FIELD' => 'both_value',
+  'MAPPING_5_TYPE' => 'integer',
+  'MAPPING_5_AGGREGATE_INTERVAL' => '5',
+  'MAPPING_5_DEDUP' => 'true',
 ).freeze
 
 SKIP_WRITE_ENV = BASE_ENV.merge(
@@ -513,6 +534,19 @@ DEDUP_ENV = {
   'MAPPING_3_TYPE' => 'string',
   'MAPPING_3_DEDUP' => 'true',
   'MAPPING_3_HEARTBEAT_INTERVAL' => '60',
+  #
+  # Virtual mapping with DEDUP, calculated from a mapping without it
+  'MAPPING_4_TOPIC' => 'sensor/base',
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'base',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_NAME' => 'base',
+  #
+  'MAPPING_5_MEASUREMENT' => 'PV',
+  'MAPPING_5_FIELD' => 'base_double',
+  'MAPPING_5_TYPE' => 'integer',
+  'MAPPING_5_FORMULA' => '{base} * 2',
+  'MAPPING_5_DEDUP' => 'true',
 }.freeze
 
 describe Mapper do
@@ -1298,6 +1332,43 @@ describe Mapper do
       expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 150 }])
     end
 
+    it 'lets a formula see every value, not just the average' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/named', '10')
+      # The aggregated mapping waits for its window, the formula does not
+      expect(hash).to eq([{ field: 'named_double', measurement: 'PV', value: 20 }])
+
+      at(1002.0)
+      hash = mapper.records_for('sensor/named', '20')
+      expect(hash).to eq([{ field: 'named_double', measurement: 'PV', value: 40 }])
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/named', '30')
+      expect(hash).to eq(
+        [
+          # Average of 10, 20 and 30 - while the formula uses the latest value
+          { field: 'named_value', measurement: 'PV', value: 20 },
+          { field: 'named_double', measurement: 'PV', value: 60 },
+        ],
+      )
+    end
+
+    it 'deduplicates the average, not every single value' do
+      at(1000.0)
+      mapper.records_for('sensor/both', '10')
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/both', '10')
+      expect(hash).to eq([{ field: 'both_value', measurement: 'PV', value: 10 }])
+
+      # Next window, same average - held back within the heartbeat interval
+      at(1007.0)
+      mapper.records_for('sensor/both', '10')
+
+      at(1013.0)
+      expect(mapper.records_for('sensor/both', '10')).to eq([])
+    end
+
     it 'applies the aggregation before splitting into positive/negative fields' do
       at(1000.0)
       mapper.records_for('sensor/signed', '-10')
@@ -1482,6 +1553,32 @@ describe Mapper do
         [
           { field: 'grid_export', measurement: 'PV', value: 50 },
           { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
+    end
+
+    it 'applies dedup to a virtual mapping as well' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq(
+        [
+          { field: 'base', measurement: 'PV', value: 10 },
+          { field: 'base_double', measurement: 'PV', value: 20 },
+        ],
+      )
+
+      # The source has no DEDUP and is written again, the virtual one is held back
+      at(1030.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq([{ field: 'base', measurement: 'PV', value: 10 }])
+
+      # Beyond the heartbeat interval, the virtual mapping writes again
+      at(1061.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq(
+        [
+          { field: 'base', measurement: 'PV', value: 10 },
+          { field: 'base_double', measurement: 'PV', value: 20 },
         ],
       )
     end
