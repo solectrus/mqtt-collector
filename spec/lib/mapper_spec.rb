@@ -305,11 +305,18 @@ MAX_AGE_ENV = BASE_ENV.merge(
   'MAPPING_2_TYPE' => 'integer',
   'MAPPING_2_FORMULA' => '{power} + {other}',
   #
-  # Unrelated topic, only used to trigger a virtual mapping recalculation
   'MAPPING_3_TOPIC' => 'sensor/decoy',
   'MAPPING_3_MEASUREMENT' => 'PV',
   'MAPPING_3_FIELD' => 'decoy',
   'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'decoy',
+  #
+  # Virtual mapping referencing three values, so a message on sensor/decoy
+  # recalculates it while power and other are still unknown
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'triple_power',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{power} + {other} + {decoy}',
 ).freeze
 
 describe Mapper do
@@ -699,7 +706,6 @@ describe Mapper do
         [
           { field: 'house_power', measurement: 'PV', value: 600 },
           { field: 'total_power', measurement: 'PV', value: 1600 },
-          { field: 'missing_ref', measurement: 'PV', value: 0 },
           { field: 'net_power_minus', measurement: 'PV', value: 0 },
           { field: 'net_power_plus', measurement: 'PV', value: 400 },
         ],
@@ -788,7 +794,7 @@ describe Mapper do
         [{ field: 'decoy', measurement: 'PV', value: 1 }],
       )
       expect(logger.warn_messages).to include(
-        %r{Formula for shadow_power.*power \[sensor/power\]: never received.*other \[sensor/other\]: never received},
+        %r{Formula for triple_power.*power \[sensor/power\]: never received.*other \[sensor/other\]: never received},
       )
     end
   end

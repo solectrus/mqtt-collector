@@ -21,7 +21,7 @@ class Mapper
   end
 
   def virtual_mappings
-    config.mappings.select { |mapping| mapping[:topic].nil? }
+    config.virtual_mappings
   end
 
   def records_for(topic, message)
@@ -30,11 +30,12 @@ class Mapper
     mappings = mappings_for(topic)
     raise "Unknown mapping for topic: #{topic}" if mappings.empty?
 
-    records = mappings.map { |mapping| records_for_mapping(mapping, message) }
+    # Names of the values this message changes, extended by every virtual
+    # mapping calculated from them
+    updated = []
+    records = mappings.flat_map { |mapping| records_for_mapping(mapping, message, updated) }
 
-    (records + virtual_records)
-      .flatten
-      .delete_if { |record| record[:value].nil? }
+    (records + virtual_records(updated)).delete_if { |record| record[:value].nil? }
   end
 
   private
@@ -56,29 +57,33 @@ class Mapper
              ')'
   end
 
-  def records_for_mapping(mapping, message)
+  def records_for_mapping(mapping, message, updated)
     value = value_from(message, mapping)
-    remember_value(mapping, value)
+    remember_value(mapping, value, updated)
 
+    map_value(mapping, value)
+  end
+
+  # Recalculate the virtual mappings that reference one of the changed
+  # values. A virtual mapping whose inputs did not change would write the
+  # same value again, so it is skipped. A chained virtual mapping sees the
+  # names added here, because Config hands them over in calculation order.
+  def virtual_records(updated)
+    virtual_mappings.flat_map do |mapping|
+      next [] unless config.references_for(mapping).intersect?(updated)
+
+      value = virtual_value_from(mapping)
+      remember_value(mapping, value, updated)
+
+      map_value(mapping, value)
+    end
+  end
+
+  def map_value(mapping, value)
     if value && signed?(mapping)
       map_with_sign(mapping, value)
     else
       map_default(mapping, value)
-    end
-  end
-
-  # Recalculate all virtual mappings, since any of them might reference a
-  # value that just changed.
-  def virtual_records
-    virtual_mappings.map do |mapping|
-      value = virtual_value_from(mapping)
-      remember_value(mapping, value)
-
-      if value && signed?(mapping)
-        map_with_sign(mapping, value)
-      else
-        map_default(mapping, value)
-      end
     end
   end
 
@@ -105,15 +110,11 @@ class Mapper
   end
 
   def missing_references(mapping)
-    referenced_keys(mapping) - fresh_values.keys
-  end
-
-  def referenced_keys(mapping)
-    mapping[:formula].scan(/{(.*?)}/).flatten.uniq
+    config.references_for(mapping) - fresh_values.keys
   end
 
   def describe_reference(key)
-    mapping = mapping_by_key[key]
+    mapping = config.mapping_by_name[key]
     label = mapping ? "#{key} [#{mapping[:topic] || mapping[:field] || mapping[:field_positive]}]" : key
 
     "#{label}: #{reference_status(key)}"
@@ -133,10 +134,13 @@ class Mapper
   # with the time it was received, so virtual mappings can reference it via a
   # placeholder like "{washer}" - and so it can expire via MAX_AGE. A mapping
   # without a NAME can't be referenced, so there's nothing to remember for it.
-  def remember_value(mapping, value)
+  # The name goes to "updated", which selects the virtual mappings to
+  # recalculate.
+  def remember_value(mapping, value, updated)
     return if value.nil? || mapping[:name].nil?
 
     last_values[mapping[:name]] = { value:, received_at: monotonic_time }
+    updated << mapping[:name]
   end
 
   # Values for use in virtual mapping formulas, excluding any mapping whose
@@ -151,12 +155,7 @@ class Mapper
   end
 
   def max_age_by_key
-    @max_age_by_key ||= mapping_by_key.transform_values { |mapping| mapping[:max_age]&.to_f }
-  end
-
-  def mapping_by_key
-    @mapping_by_key ||=
-      config.mappings.select { |mapping| mapping[:name] }.to_h { |mapping| [mapping[:name], mapping] }
+    @max_age_by_key ||= config.mapping_by_name.transform_values { |mapping| mapping[:max_age]&.to_f }
   end
 
   def last_values
