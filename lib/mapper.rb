@@ -86,7 +86,7 @@ class Mapper
     message = Evaluator.new(expression: mapping[:formula], data: fresh_values).run
 
     if message.nil? && mapping[:null_to_zero] != 'true'
-      config.logger.warn "  Formula for #{mapping[:field] || mapping[:field_positive]} " \
+      config.logger.warn "  Formula for #{target_field(mapping)} " \
                           "could not be evaluated#{missing_references_note(mapping)}, ignoring."
       return
     end
@@ -167,6 +167,12 @@ class Mapper
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
+  # The field a warning names. A signed mapping has no :field, so its
+  # positive one stands for the pair.
+  def target_field(mapping)
+    mapping[:field] || mapping[:field_positive]
+  end
+
   def signed?(mapping)
     (
       mapping.keys &
@@ -211,7 +217,7 @@ class Mapper
 
   def convert_float(message, mapping)
     ensure_min_max(
-      field: mapping[:field],
+      field: target_field(mapping),
       value: (begin
         message.to_f
       rescue StandardError
@@ -225,7 +231,7 @@ class Mapper
 
   def convert_integer(message, mapping)
     ensure_min_max(
-      field: mapping[:field],
+      field: target_field(mapping),
       value: (begin
         message.to_f.round
       rescue StandardError

@@ -662,6 +662,31 @@ describe Mapper do
     end
   end
 
+  context 'with a signed mapping beyond its maximum' do
+    let(:config) do
+      Config.new(
+        BASE_ENV.merge(
+          'MAPPING_0_TOPIC' => 'sensor/grid',
+          'MAPPING_0_MEASUREMENT_POSITIVE' => 'PV',
+          'MAPPING_0_MEASUREMENT_NEGATIVE' => 'PV',
+          'MAPPING_0_FIELD_POSITIVE' => 'grid_import_power',
+          'MAPPING_0_FIELD_NEGATIVE' => 'grid_export_power',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_MAX' => '100',
+        ),
+        logger:,
+      )
+    end
+
+    it 'names the field in the warning' do
+      expect(mapper.records_for('sensor/grid', '500')).to eq([])
+
+      expect(logger.warn_messages).to include(
+        /Ignoring grid_import_power: 500 exceeds maximum of 100/,
+      )
+    end
+  end
+
   context 'with MAPPING_X_MAX_AGE' do
     let(:config) { Config.new(MAX_AGE_ENV, logger:) }
 
