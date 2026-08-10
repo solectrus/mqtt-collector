@@ -1369,14 +1369,24 @@ describe Mapper do
       expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
     end
 
-    it 'suppresses repeated zeros indefinitely, without a heartbeat' do
+    it 'suppresses a repeated zero within the heartbeat interval' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '0')
+
+      at(1030.0) # 30s later - within the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([])
+    end
+
+    it 'writes a repeated zero again once the heartbeat interval has passed' do
       at(1000.0)
       mapper.records_for('sensor/power', '0')
 
       at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
       hash = mapper.records_for('sensor/power', '0')
 
-      expect(hash).to eq([])
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
     end
 
     it 'always writes a value once it actually changes' do
@@ -1419,7 +1429,7 @@ describe Mapper do
         ],
       )
 
-      # grid_export stays at 0 (suppressed), grid_import changes - still written
+      # grid_export stays at 0 (suppressed within heartbeat), grid_import changes - still written
       at(1000.1)
       hash = mapper.records_for('sensor/grid', '150')
       expect(hash).to eq([{ field: 'grid_import', measurement: 'PV', value: 150 }])
@@ -1439,11 +1449,16 @@ describe Mapper do
       hash = mapper.records_for('sensor/grid', '-50')
       expect(hash).to eq([])
 
-      # Well beyond the heartbeat interval - grid_export (non-zero) is written again,
-      # grid_import stays suppressed since it's zero
+      # Well beyond the heartbeat interval - both repeated values are written again,
+      # regardless of grid_import still being zero
       at(1061.0)
       hash = mapper.records_for('sensor/grid', '-50')
-      expect(hash).to eq([{ field: 'grid_export', measurement: 'PV', value: 50 }])
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 50 },
+          { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
     end
 
     it 'mentions dedup and the heartbeat interval in the formatted description' do
@@ -1452,14 +1467,14 @@ describe Mapper do
       )
     end
 
-    it 'treats a repeated "false" boolean like a zero (suppressed indefinitely)' do
+    it 'still applies the heartbeat to a repeated "false" boolean' do
       at(1000.0)
       mapper.records_for('sensor/leak', 'false')
 
       at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
       hash = mapper.records_for('sensor/leak', 'false')
 
-      expect(hash).to eq([])
+      expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: false }])
     end
 
     it 'still applies the heartbeat to a repeated "true" boolean' do
@@ -1472,7 +1487,7 @@ describe Mapper do
       expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: true }])
     end
 
-    it 'still applies the heartbeat to a repeated string value (no zero-equivalent)' do
+    it 'still applies the heartbeat to a repeated string value' do
       at(1000.0)
       mapper.records_for('sensor/status', 'idle')
 

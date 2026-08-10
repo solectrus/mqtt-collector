@@ -114,10 +114,13 @@ class Mapper
   end
 
   # If MAPPING_X_DEDUP is set, a record is only passed through when its value
-  # actually changed - except a zero value is always written once and then
-  # suppressed for as long as it stays zero (no further signal needed), while
-  # a repeated non-zero value is still written every MAPPING_X_HEARTBEAT_INTERVAL
-  # seconds (default 60), to show that the sender is still alive.
+  # actually changed, or every MAPPING_X_HEARTBEAT_INTERVAL seconds (default
+  # 60) regardless of the value, to show that the sender is still alive. A
+  # zero (or false, or any other repeated value) is not suppressed forever -
+  # for most sensors 0 is a common, meaningful state (wallbox idle, heat pump
+  # off, no PV at night), and if that state stopped producing points, "still
+  # reporting 0" would become indistinguishable from "sensor is down",
+  # defeating the point of the heartbeat.
   def deduped(mapping, records)
     return records unless mapping[:dedup] == 'true'
 
@@ -134,23 +137,10 @@ class Mapper
       return true
     end
 
-    return false if zero_ish?(record[:value])
-
     return false if monotonic_time - last[:written_at] < interval
 
     last[:written_at] = monotonic_time
     true
-  end
-
-  def zero_ish?(value)
-    case value
-    when Numeric
-      value.zero?
-    when true, false
-      value == false
-    else
-      false
-    end
   end
 
   def dedup_state
