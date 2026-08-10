@@ -701,6 +701,7 @@ describe Mapper do
     it 'calculates the virtual mapping once all referenced values are known, and keeps it updated' do
       mapper.records_for('senec/0/ENERGY/GUI_INVERTER_POWER', '1000')
 
+      # missing_ref does not reference house_power, so it is not recalculated here
       hash = mapper.records_for('senec/0/ENERGY/GUI_HOUSE_POW', '600')
       expect(hash).to eq(
         [
@@ -721,6 +722,59 @@ describe Mapper do
           { field: 'net_power_minus', measurement: 'PV', value: 0 },
           { field: 'net_power_plus', measurement: 'PV', value: 1400 },
         ],
+      )
+    end
+  end
+
+  context 'with chained virtual mappings' do
+    let(:config) { Config.new(CHAINED_ENV, logger:) }
+
+    it 'calculates both from the same message, without a delay' do
+      expect(mapper.records_for('sensor/power', '100')).to eq(
+        [
+          { field: 'power', measurement: 'PV', value: 100 },
+          { field: 'doubled', measurement: 'PV', value: 200 },
+          { field: 'quadrupled', measurement: 'PV', value: 400 },
+        ],
+      )
+
+      expect(mapper.records_for('sensor/power', '1')).to eq(
+        [
+          { field: 'power', measurement: 'PV', value: 1 },
+          { field: 'doubled', measurement: 'PV', value: 2 },
+          { field: 'quadrupled', measurement: 'PV', value: 4 },
+        ],
+      )
+    end
+
+    it 'marks an expired virtual mapping as virtual in the warning' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+      mapper.records_for('sensor/other', '5')
+
+      # 31 seconds later - "doubled" was not recalculated meanwhile, so it is
+      # beyond its own MAX_AGE
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+      records = mapper.records_for('sensor/other', '6')
+
+      expect(records.map { |record| record[:field] }).to eq(%w[other])
+      expect(logger.warn_messages).to include(
+        /Formula for sum could not be evaluated \(doubled \[virtual\]: last received 31s ago/,
+      )
+    end
+  end
+
+  context 'with a formula that fails on known values' do
+    let(:config) { Config.new(BROKEN_FORMULA_ENV, logger:) }
+
+    it 'points at the formula instead of naming a reference' do
+      # 100 / 0 cannot be calculated, although "power" has a value
+      expect(mapper.records_for('sensor/power', '0')).to eq(
+        [{ field: 'power', measurement: 'PV', value: 0 }],
+      )
+
+      expect(logger.warn_messages).to include(
+        /Formula for ratio could not be evaluated \(all referenced values are known/,
       )
     end
   end
@@ -796,6 +850,42 @@ describe Mapper do
       expect(logger.warn_messages).to include(
         %r{Formula for triple_power.*power \[sensor/power\]: never received.*other \[sensor/other\]: never received},
       )
+    end
+
+    it 'warns once while the situation is unchanged' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+
+      # "power" was never received, so shadow_power stays unresolved for both messages
+      mapper.records_for('sensor/other', '5')
+      mapper.records_for('sensor/other', '6')
+
+      expect(logger.warn_messages.grep(/Formula for shadow_power/).size).to eq(1)
+    end
+
+    it 'warns again once the situation changes' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/other', '5') # "power" never received, warns
+
+      mapper.records_for('sensor/power', '100') # resolved, no warning
+
+      # 31 seconds later - "power" is beyond its MAX_AGE, which warns again
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1031.0)
+      mapper.records_for('sensor/other', '7')
+
+      messages = logger.warn_messages.grep(/Formula for shadow_power/)
+      expect(messages.size).to eq(2)
+      expect(messages.last).to include('exceeds MAX_AGE of 30s')
+    end
+
+    it 'does not recalculate a virtual mapping whose references did not change' do
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(1000.0)
+      mapper.records_for('sensor/power', '100')
+      mapper.records_for('sensor/other', '5')
+
+      records = mapper.records_for('sensor/decoy', '1')
+
+      # triple_power references decoy and is written again, shadow_power is not
+      expect(records.map { |record| record[:field] }).to eq(%w[decoy triple_power])
     end
   end
 end

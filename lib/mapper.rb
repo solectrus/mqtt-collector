@@ -88,45 +88,72 @@ class Mapper
   end
 
   def virtual_value_from(mapping)
-    message = Evaluator.new(expression: mapping[:formula], data: fresh_values).run
+    # One snapshot for the calculation and the warning, so a value cannot
+    # expire between the two and make them disagree
+    values = fresh_values
+    message = Evaluator.new(expression: mapping[:formula], data: values).run
 
     if message.nil? && mapping[:null_to_zero] != 'true'
-      config.logger.warn "  Formula for #{target_field(mapping)} " \
-                          "could not be evaluated#{missing_references_note(mapping)}, ignoring."
+      warn_unresolved(mapping, values)
       return
     end
 
+    unresolved_states.delete(mapping[:mapping_group])
     convert_type(message, mapping)
   end
 
+  # A mapping that stays unresolved (e.g. because a sensor is gone) would
+  # repeat the same warning for every message of the other references. The
+  # warning is logged only while the situation changes. A calculation that
+  # works again clears the state, so the next dropout is logged again.
+  def warn_unresolved(mapping, values)
+    missing = config.references_for(mapping) - values.keys
+
+    # Which references are unresolved, and why. The age in seconds is left
+    # out, because it changes with every message.
+    state = missing.map { |key| [key, reference_state(key)] }
+    return if unresolved_states[mapping[:mapping_group]] == state
+
+    unresolved_states[mapping[:mapping_group]] = state
+
+    config.logger.warn "  Formula for #{target_field(mapping)} " \
+                       "could not be evaluated#{missing_references_note(missing)}, ignoring."
+  end
+
+  def unresolved_states
+    @unresolved_states ||= {}
+  end
+
   # Describes which of the mapping's referenced values are missing or expired,
-  # e.g. " (washer [sensor/power]: never received)". Falls back to a generic
-  # note if the formula doesn't reference any (currently) unknown mapping.
-  def missing_references_note(mapping)
-    missing = missing_references(mapping)
-    return ' (missing or outdated values)' if missing.empty?
+  # e.g. " (washer [sensor/power]: never received)". If every reference has a
+  # value, the formula itself is at fault, e.g. it divides by zero or
+  # calculates with a string.
+  def missing_references_note(missing)
+    return ' (all referenced values are known, so check the formula itself)' if missing.empty?
 
     " (#{missing.map { |key| describe_reference(key) }.join(', ')})"
   end
 
-  def missing_references(mapping)
-    config.references_for(mapping) - fresh_values.keys
-  end
-
+  # Config refuses a formula referencing an unknown name, so every reference
+  # has a mapping here.
   def describe_reference(key)
     mapping = config.mapping_by_name[key]
-    label = mapping ? "#{key} [#{mapping[:topic] || mapping[:field] || mapping[:field_positive]}]" : key
+    source = mapping[:topic] || 'virtual'
 
-    "#{label}: #{reference_status(key)}"
+    "#{key} [#{source}]: #{reference_status(key)}"
   end
 
   # Distinguishes a value that was never received at all from one that was
-  # received but is now older than its own MAPPING_X_MAX_AGE.
-  def reference_status(key)
-    entry = last_values[key]
-    return 'never received' unless entry
+  # received but is now older than its own MAPPING_X_MAX_AGE. The warning and
+  # the state that suppresses it share this answer, so they cannot disagree.
+  def reference_state(key)
+    last_values.key?(key) ? :expired : :never
+  end
 
-    age = (monotonic_time - entry[:received_at]).round
+  def reference_status(key)
+    return 'never received' if reference_state(key) == :never
+
+    age = (monotonic_time - last_values[key][:received_at]).round
     "last received #{age}s ago, exceeds MAX_AGE of #{max_age_by_key[key].to_i}s"
   end
 
