@@ -94,8 +94,8 @@ class Loop
     # (Mostly) endless loop to receive messages
     count = 0
     loop do
-      time, records = next_message
-      influx_push.enqueue(records:, time: time.to_i) if records.any?
+      topic, time, records = next_message
+      influx_push.enqueue(records:, time: time.to_i, topic:) if records.any?
 
       count += 1
       break if max_count && count >= max_count
@@ -123,7 +123,7 @@ class Loop
       logger.info "  => #{record[:measurement]}:#{record[:field]} = #{record[:value]}"
     end
 
-    [time, records]
+    [topic, time, records]
   end
 
   # Wait until InfluxDB is reachable, for up to max_wait seconds

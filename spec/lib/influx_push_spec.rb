@@ -9,6 +9,7 @@ describe InfluxPush do
   let(:logger) { MemoryLogger.new }
   let(:records) { [{ measurement: 'PV', field: 'battery_soc', value: 80.0 }] }
   let(:time) { 1_726_812_261 }
+  let(:topic) { 'senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE' }
 
   describe '#ready?' do
     it 'delegates to FluxWriter#ready?', vcr: 'influx_success' do
@@ -18,7 +19,7 @@ describe InfluxPush do
 
   describe '#run' do
     it 'pushes a single queued batch to InfluxDB', vcr: 'influx_success' do
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       run_until_drained
 
@@ -26,8 +27,18 @@ describe InfluxPush do
       expect(logger.error_messages).to be_empty
     end
 
+    it 'names the topic and the time, so two batches can be told apart', vcr: 'influx_success' do
+      influx_push.enqueue(records:, topic:, time:)
+
+      run_until_drained
+
+      expect(logger.info_messages).to include(
+        /from #{Regexp.escape(topic)} at #{Regexp.escape(Time.at(time).to_s)} to InfluxDB/,
+      )
+    end
+
     it 'pushes multiple queued batches to InfluxDB', vcr: 'influx_success' do
-      2.times { influx_push.enqueue(records:, time:) }
+      2.times { influx_push.enqueue(records:, topic:, time:) }
 
       run_until_drained
 
@@ -37,7 +48,7 @@ describe InfluxPush do
     it 'keeps retrying a batch that keeps failing, instead of dropping it' do
       allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       thread = Thread.new { influx_push.run }
 
@@ -69,7 +80,7 @@ describe InfluxPush do
       )
 
       original_time = 1_700_000_000
-      influx_push.enqueue(records:, time: original_time)
+      influx_push.enqueue(records:, topic:, time: original_time)
 
       thread = Thread.new { influx_push.run }
 
@@ -87,7 +98,7 @@ describe InfluxPush do
     it 'drops the batch instead of retrying it forever' do
       allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('422')))
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { sleep 0.01 until influx_push.pending.zero? }
@@ -103,7 +114,7 @@ describe InfluxPush do
       allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('422')))
       influx_push = described_class.new(config:, retry_delay: 5)
 
-      3.times { |i| influx_push.enqueue(records:, time: i) }
+      3.times { |i| influx_push.enqueue(records:, topic:, time: i) }
 
       thread = Thread.new { influx_push.run }
       # A pause after each dropped batch would need 15 seconds for these three
@@ -116,7 +127,7 @@ describe InfluxPush do
     it 'keeps retrying a server error, which a retry can fix' do
       allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('503')))
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { sleep 0.01 until logger.info_messages.any?(/queued again/) }
@@ -132,7 +143,7 @@ describe InfluxPush do
     it 'drops the oldest batch instead of growing without a limit' do
       stub_const('InfluxPush::MAX_QUEUE_SIZE', 3)
 
-      5.times { |i| influx_push.enqueue(records:, time: i) }
+      5.times { |i| influx_push.enqueue(records:, topic:, time: i) }
 
       expect(influx_push.queue.size).to eq(3)
       expect(influx_push.pending).to eq(3)
@@ -147,7 +158,7 @@ describe InfluxPush do
       # none - the same situation as a push thread that was quicker
       stub_const('InfluxPush::MAX_QUEUE_SIZE', 0)
 
-      expect { influx_push.enqueue(records:, time: 1) }.not_to raise_error
+      expect { influx_push.enqueue(records:, topic:, time: 1) }.not_to raise_error
 
       expect(influx_push.queue.size).to eq(1)
       expect(influx_push.pending).to eq(1)
@@ -170,7 +181,7 @@ describe InfluxPush do
 
       expect(influx_push.pending).to eq(0)
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
       expect(influx_push.pending).to eq(1)
 
       thread = Thread.new { influx_push.run }
@@ -193,7 +204,7 @@ describe InfluxPush do
       # A shutdown kills the MQTT thread while it may sit inside enqueue
       20.times do
         push = described_class.new(config:)
-        producer = Thread.new { loop { push.enqueue(records:, time:) } }
+        producer = Thread.new { loop { push.enqueue(records:, topic:, time:) } }
         sleep 0.002
         producer.kill
         producer.join
@@ -205,7 +216,7 @@ describe InfluxPush do
 
   describe '#shutdown' do
     it 'ends the run loop once everything is written', vcr: 'influx_success' do
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { influx_push.shutdown }
@@ -218,7 +229,7 @@ describe InfluxPush do
     it 'waits for the pending batches and says how many are left' do
       allow(FluxWriter).to receive(:new).and_return(slow_flux_writer)
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(5) { influx_push.shutdown }
@@ -242,7 +253,7 @@ describe InfluxPush do
       )
       influx_push = described_class.new(config:, retry_delay: 5, shutdown_timeout: 5)
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { sleep 0.01 until attempts == 1 }
 
@@ -258,7 +269,7 @@ describe InfluxPush do
       allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
       influx_push = described_class.new(config:, retry_delay: 0.01, shutdown_timeout: 0)
 
-      20.times { influx_push.enqueue(records:, time:) }
+      20.times { influx_push.enqueue(records:, topic:, time:) }
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { influx_push.shutdown }
@@ -274,7 +285,7 @@ describe InfluxPush do
     it 'reports a batch that fails while the queue is being closed' do
       allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
 
-      influx_push.enqueue(records:, time:)
+      influx_push.enqueue(records:, topic:, time:)
 
       # The shutdown closes the queue while this batch is being written
       allow(influx_push.queue).to receive(:<<).and_raise(ClosedQueueError)

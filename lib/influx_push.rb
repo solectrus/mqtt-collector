@@ -47,15 +47,17 @@ class InfluxPush
 
   # Hand a batch of records over to be written. The time travels with them,
   # so a write delayed by a retry still lands at the point in time the values
-  # were actually received.
-  def enqueue(records:, time:)
+  # were actually received. The topic travels with them as well, because two
+  # messages can carry the same number of records at the same second - only
+  # the topic tells their log lines apart.
+  def enqueue(records:, time:, topic:)
     # The counter and the queue have to change together. A shutdown kills the
     # thread that calls this, and a kill between the two steps would leave a
     # batch counted but not queued. The count would never reach zero again.
     Thread.handle_interrupt(Object => :never) do
       drop_oldest if queue.size >= MAX_QUEUE_SIZE
       change_pending(+1)
-      queue << { records:, time: }
+      queue << { records:, time:, topic: }
     end
   end
 
@@ -94,8 +96,7 @@ class InfluxPush
   def push(batch)
     flux_writer.push(batch[:records], time: batch[:time])
     change_pending(-1)
-    logger.info "Successfully pushed #{batch[:records].size} record(s) " \
-                "from #{Time.at(batch[:time])} to InfluxDB"
+    logger.info "Successfully pushed #{describe(batch)} to InfluxDB"
   rescue StandardError => e
     # Only a batch that waits for another attempt needs a pause. A pause after
     # a dropped batch would hold up the whole queue for nothing.
@@ -122,8 +123,7 @@ class InfluxPush
     end
 
     if unacceptable?(error)
-      logger.error "InfluxDB refused #{batch[:records].size} record(s) " \
-                   "from #{Time.at(batch[:time])} - a retry sends the same data, " \
+      logger.error "InfluxDB refused #{describe(batch)} - a retry sends the same data, " \
                    'so the batch is dropped'
       change_pending(-1)
       return false
@@ -136,10 +136,16 @@ class InfluxPush
     true
   rescue ClosedQueueError
     # The shutdown closed the queue while this batch was being written
-    logger.error "Dropping #{batch[:records].size} record(s) " \
-                 "from #{Time.at(batch[:time])} - they were never written to InfluxDB"
+    logger.error "Dropping #{describe(batch)} - they were never written to InfluxDB"
     change_pending(-1)
     false
+  end
+
+  # Names a batch in a log line. The push runs in its own thread, so the line
+  # does not follow the message it belongs to. The topic and the time say
+  # which message it is.
+  def describe(batch)
+    "#{batch[:records].size} record(s) from #{batch[:topic]} at #{Time.at(batch[:time])}"
   end
 
   # Keeps the newest data, because a dashboard shows the recent values first
