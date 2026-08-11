@@ -30,7 +30,19 @@ class Loop
         receive_loop
       end
 
-    push_thread = Thread.new { push_loop }
+    push_thread =
+      Thread.new do
+        # Nobody joins this thread, so a fatal error in it would go unnoticed.
+        # The collector would keep filling the queue and drop every batch at
+        # the limit. Ending the process instead lets Docker restart it.
+        Thread.current.abort_on_exception = true
+
+        # The error reaches the main thread through the flag above, and Ruby
+        # reports it from there. A report here as well would only double it.
+        Thread.current.report_on_exception = false
+
+        push_loop
+      end
 
     # Wait for the receive thread to finish (will happen if max_count is set)
     receive_thread.join

@@ -126,6 +126,19 @@ describe Loop do
       end
     end
 
+    context 'when the push thread dies unexpectedly' do
+      before do
+        allow(loop).to receive_messages(influx_ready?: true,
+                                        influx_push: instance_double(InfluxPush, shutdown: nil),)
+        allow(loop).to receive(:receive_loop) { sleep 2 }
+        allow(loop).to receive(:push_loop).and_raise('the push thread is broken')
+      end
+
+      it 'ends instead of running on without a writer' do
+        expect { loop.start }.to raise_error('the push thread is broken')
+      end
+    end
+
     context 'when shutting down' do
       before do
         allow(loop).to receive_messages(influx_ready?: true, influx_push: fake_influx_push)
