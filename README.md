@@ -42,6 +42,12 @@ On startup, the collector waits (up to 12 seconds) for InfluxDB to become reacha
 
 While running, incoming MQTT messages are always received and converted immediately - they're never blocked by a slow or unreachable InfluxDB. Instead, they're queued in memory and written by a separate background process. If a write fails (e.g. because InfluxDB is temporarily unreachable), the batch stays queued and is retried automatically every 5 seconds, keeping its original measurement time - so once InfluxDB is reachable again, the backlog is delivered with the timestamps of when the values actually arrived, not when they were finally written.
 
+A batch that InfluxDB refuses outright is dropped instead of retried, because sending it again would produce the same answer. This applies to a broken line protocol (HTTP 400) and to a field that doesn't match the type it already has in InfluxDB (HTTP 422). Both are named in the log.
+
+The queue holds at most 100,000 batches - more than a day at one message per second. Beyond that, the oldest batch makes room for the newest one, so a very long outage costs the beginning of the backlog instead of the whole container.
+
+On shutdown (`docker stop` or Ctrl-C), the collector stops receiving MQTT messages first and then gives the queue up to 5 seconds to reach InfluxDB. That limit stays below the 10 seconds Docker allows before it kills the container. If InfluxDB is still unreachable when the time is up, the log says how many batches were lost.
+
 Note: this in-memory queue is lost if the container is restarted while InfluxDB is still unreachable.
 
 ## Development
