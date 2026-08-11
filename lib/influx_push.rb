@@ -12,11 +12,28 @@ class InfluxPush
   # in the middle of the wait.
   DEFAULT_SHUTDOWN_TIMEOUT = 5
 
+  # How long a retry waits while the collector shuts down. It is short, so the
+  # pending batches get more than one attempt inside the shutdown budget.
+  SHUTDOWN_RETRY_DELAY = 0.5
+
+  # InfluxDB refuses the data itself with these codes: the line protocol is
+  # broken (400), or a field does not match the type it already has (422). A
+  # retry sends the same data again, so such a batch would circle in the queue
+  # for as long as the collector runs.
+  UNACCEPTABLE_HTTP_CODES = %w[400 422].freeze
+
+  # The queue only lives in memory, so it cannot grow without a limit. A long
+  # outage would fill the memory until the container is killed, which loses
+  # the whole queue instead of its oldest part. At one message per second this
+  # holds more than a day.
+  MAX_QUEUE_SIZE = 100_000
+
   def initialize(config:, retry_delay: 5, shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT)
     @config = config
     @retry_delay = retry_delay
     @shutdown_timeout = shutdown_timeout
     @queue = Queue.new
+    @retry_wakeup = Queue.new
     @mutex = Mutex.new
     @pending = 0
     @flux_writer = FluxWriter.new(config)
@@ -36,6 +53,7 @@ class InfluxPush
     # thread that calls this, and a kill between the two steps would leave a
     # batch counted but not queued. The count would never reach zero again.
     Thread.handle_interrupt(Object => :never) do
+      drop_oldest if queue.size >= MAX_QUEUE_SIZE
       change_pending(+1)
       queue << { records:, time: }
     end
@@ -65,6 +83,7 @@ class InfluxPush
   # the queue would be lost anyway. Whatever is left over is named in the log
   # instead of disappearing silently.
   def shutdown
+    start_shutdown
     wait_for_pending
     give_up
     queue.close
@@ -78,10 +97,17 @@ class InfluxPush
     logger.info "Successfully pushed #{batch[:records].size} record(s) " \
                 "from #{Time.at(batch[:time])} to InfluxDB"
   rescue StandardError => e
-    error_handling(batch, e)
+    # Only a batch that waits for another attempt needs a pause. A pause after
+    # a dropped batch would hold up the whole queue for nothing.
+    wait_before_retry if error_handling(batch, e)
+  end
 
-    # Wait a bit before trying again
-    sleep(retry_delay) unless giving_up?
+  # Waits before the next attempt. A shutdown ends the wait at once, because
+  # sleeping through its whole budget would lose the batches it waits for.
+  def wait_before_retry
+    return sleep(SHUTDOWN_RETRY_DELAY) if shutting_down?
+
+    @retry_wakeup.pop(timeout: retry_delay)
   end
 
   def error_handling(batch, error)
@@ -90,17 +116,52 @@ class InfluxPush
     # After the shutdown gave up, a retry can never reach InfluxDB. The
     # shutdown already named how many batches are lost, so the batch is only
     # counted out here.
-    return change_pending(-1) if giving_up?
+    if giving_up?
+      change_pending(-1)
+      return false
+    end
+
+    if unacceptable?(error)
+      logger.error "InfluxDB refused #{batch[:records].size} record(s) " \
+                   "from #{Time.at(batch[:time])} - a retry sends the same data, " \
+                   'so the batch is dropped'
+      change_pending(-1)
+      return false
+    end
 
     # Put the batch back into the queue, to retry later
     queue << batch
 
     logger.info "The batch has been queued again. Will retry #{pending} batch(es) later."
+    true
   rescue ClosedQueueError
     # The shutdown closed the queue while this batch was being written
     logger.error "Dropping #{batch[:records].size} record(s) " \
                  "from #{Time.at(batch[:time])} - they were never written to InfluxDB"
     change_pending(-1)
+    false
+  end
+
+  # Keeps the newest data, because a dashboard shows the recent values first
+  def drop_oldest
+    queue.pop(true)
+    change_pending(-1)
+    warn_about_limit
+  rescue ThreadError
+    # The push thread took the batch first, so there is room again
+    nil
+  end
+
+  def warn_about_limit
+    return if @limit_reached
+
+    @limit_reached = true
+    logger.warn "The queue holds #{MAX_QUEUE_SIZE} batches, which is the limit. " \
+                'From now on the oldest batch is dropped for every new one.'
+  end
+
+  def unacceptable?(error)
+    error.is_a?(InfluxDB2::InfluxError) && UNACCEPTABLE_HTTP_CODES.include?(error.code)
   end
 
   def wait_for_pending
@@ -116,6 +177,17 @@ class InfluxPush
       logger.info "Waiting for #{pending} batch(es) to be pushed to InfluxDB"
       sleep 1
     end
+  end
+
+  # Wakes a retry that waits out its delay, so the pending batches are tried
+  # again right away instead of at the end of the shutdown
+  def start_shutdown
+    @mutex.synchronize { @shutting_down = true }
+    @retry_wakeup.close
+  end
+
+  def shutting_down?
+    @mutex.synchronize { @shutting_down }
   end
 
   # From here on a failed write is not retried anymore, so the run loop can

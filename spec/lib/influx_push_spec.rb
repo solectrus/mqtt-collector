@@ -83,6 +83,77 @@ describe InfluxPush do
     end
   end
 
+  describe 'an error InfluxDB will not accept' do
+    it 'drops the batch instead of retrying it forever' do
+      allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('422')))
+
+      influx_push.enqueue(records:, time:)
+
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until influx_push.pending.zero? }
+
+      expect(logger.error_messages).to include(/refused 1 record\(s\).*the batch is dropped/)
+      expect(influx_push.queue).to be_empty
+
+      influx_push.shutdown
+      thread.join
+    end
+
+    it 'drops without waiting, so the queue keeps moving' do
+      allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('422')))
+      influx_push = described_class.new(config:, retry_delay: 5)
+
+      3.times { |i| influx_push.enqueue(records:, time: i) }
+
+      thread = Thread.new { influx_push.run }
+      # A pause after each dropped batch would need 15 seconds for these three
+      Timeout.timeout(1) { sleep 0.01 until influx_push.pending.zero? }
+
+      influx_push.shutdown
+      expect(thread.join(2)).to eq(thread)
+    end
+
+    it 'keeps retrying a server error, which a retry can fix' do
+      allow(FluxWriter).to receive(:new).and_return(failing_flux_writer(influx_error('503')))
+
+      influx_push.enqueue(records:, time:)
+
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until logger.info_messages.any?(/queued again/) }
+
+      expect(influx_push.pending).to eq(1)
+
+      influx_push.queue.close
+      thread.exit
+    end
+  end
+
+  describe 'the queue limit' do
+    it 'drops the oldest batch instead of growing without a limit' do
+      stub_const('InfluxPush::MAX_QUEUE_SIZE', 3)
+
+      5.times { |i| influx_push.enqueue(records:, time: i) }
+
+      expect(influx_push.queue.size).to eq(3)
+      expect(influx_push.pending).to eq(3)
+      expect(logger.warn_messages).to include(/queue holds 3 batches, which is the limit/)
+
+      kept = Array.new(3) { influx_push.queue.pop[:time] }
+      expect(kept).to eq([2, 3, 4])
+    end
+
+    it 'keeps the batch when the push thread emptied the queue first' do
+      # A limit of 0 makes every enqueue look for a batch to drop, and finds
+      # none - the same situation as a push thread that was quicker
+      stub_const('InfluxPush::MAX_QUEUE_SIZE', 0)
+
+      expect { influx_push.enqueue(records:, time: 1) }.not_to raise_error
+
+      expect(influx_push.queue.size).to eq(1)
+      expect(influx_push.pending).to eq(1)
+    end
+  end
+
   describe '#pending' do
     it 'counts a batch until InfluxDB has accepted it' do
       writing = Queue.new
@@ -157,18 +228,45 @@ describe InfluxPush do
       expect(influx_push.pending).to eq(0)
     end
 
-    it 'gives up when InfluxDB stays unreachable, instead of waiting forever' do
-      influx_push = described_class.new(config:, retry_delay: 0.01, shutdown_timeout: 0)
-      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+    it 'retries at once instead of sleeping through its own budget' do
+      # The retry delay is as long as the shutdown budget. Without a wakeup the
+      # batch never gets its second attempt, and a healthy InfluxDB loses it.
+      attempts = 0
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter).tap do |writer|
+          allow(writer).to receive(:push) do
+            attempts += 1
+            raise 'temporarily unreachable' if attempts == 1
+          end
+        end,
+      )
+      influx_push = described_class.new(config:, retry_delay: 5, shutdown_timeout: 5)
 
-      2.times { influx_push.enqueue(records:, time:) }
+      influx_push.enqueue(records:, time:)
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until attempts == 1 }
+
+      Timeout.timeout(3) { influx_push.shutdown }
+
+      expect(thread.join(2)).to eq(thread)
+      expect(attempts).to eq(2)
+      expect(influx_push.pending).to eq(0)
+      expect(logger.error_messages).not_to include(/giving up/)
+    end
+
+    it 'gives up when InfluxDB stays unreachable, instead of waiting forever' do
+      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+      influx_push = described_class.new(config:, retry_delay: 0.01, shutdown_timeout: 0)
+
+      20.times { influx_push.enqueue(records:, time:) }
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(2) { influx_push.shutdown }
 
+      # A pause after each dropped batch would need 10 seconds for these 20
       expect(thread.join(2)).to eq(thread)
       expect(logger.error_messages).to include(
-        /InfluxDB is still unreachable after 0 seconds - giving up on 2 batch\(es\)/,
+        /InfluxDB is still unreachable after 0 seconds - giving up on 20 batch\(es\)/,
       )
       expect(influx_push.pending).to eq(0)
     end
@@ -195,6 +293,16 @@ describe InfluxPush do
     thread = Thread.new { influx_push.run }
     Timeout.timeout(2) { influx_push.shutdown }
     thread.join
+  end
+
+  def influx_error(code)
+    InfluxDB2::InfluxError.new(message: "refused with #{code}", code:, reference: '', retry_after: '')
+  end
+
+  def failing_flux_writer(error)
+    instance_double(FluxWriter).tap do |writer|
+      allow(writer).to receive(:push).and_raise(error)
+    end
   end
 
   def always_failing_flux_writer
