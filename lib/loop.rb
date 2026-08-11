@@ -20,17 +20,29 @@ class Loop
   def start
     return unless influx_ready?
 
-    receive_thread = Thread.new { receive_loop }
+    receive_thread =
+      Thread.new do
+        # start joins this thread and logs what it raises, so the default
+        # report on stderr would only repeat it. The flag has to be set from
+        # inside, because the thread can raise before a caller reaches it.
+        Thread.current.report_on_exception = false
+
+        receive_loop
+      end
+
     push_thread = Thread.new { push_loop }
 
     # Wait for the receive thread to finish (will happen if max_count is set)
     receive_thread.join
-  rescue SystemExit, Interrupt
+  rescue SystemExit, SignalException
+    # Ctrl-C raises Interrupt, "docker stop" raises SignalException. Interrupt
+    # is one of those, so both arrive here and the ensure below does the work.
     logger.warn 'Exiting...'
-
-    # Stop receiving MQTT messages
-    receive_thread&.exit
   ensure
+    # Stop receiving MQTT messages first. Otherwise the queue keeps growing
+    # while it is drained, and the shutdown gives up on more than it had.
+    stop_receiving(receive_thread)
+
     # Push any remaining records to InfluxDB (can take a while, but not forever)
     influx_push.shutdown
 
@@ -106,19 +118,44 @@ class Loop
   def influx_ready?
     logger.info 'Wait until InfluxDB is ready ...'
 
-    count = 0
-    until (ready = influx_push.ready?) || (max_wait && count >= max_wait)
-      count += 1
-      sleep 1
-    end
+    started = monotonic_time
+    sleep 1 until (ready = influx_push.ready?) || waited_long_enough?(started)
 
     if ready
       logger.info 'InfluxDB is ready.'
       true
     else
-      logger.error "InfluxDB not ready after #{count} seconds - aborting."
+      waited = (monotonic_time - started).round
+      logger.error "InfluxDB not ready after #{waited} seconds - aborting."
       false
     end
+  end
+
+  # A ping can block for as long as the HTTP timeout, so the loop counts real
+  # seconds. Counting the attempts instead would report 12 seconds for a wait
+  # that took minutes.
+  def waited_long_enough?(started)
+    max_wait && monotonic_time - started >= max_wait
+  end
+
+  # Not affected by a change of the system clock, unlike Time.now
+  def monotonic_time
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  # Ends the receive thread and waits for it, so nothing reaches the queue
+  # after this point. Thread#kill alone only asks the thread to stop, and a
+  # message that arrives after that is counted but never written.
+  #
+  # Thread#join raises what the thread raised. start has already reported
+  # that, so it is ignored here.
+  def stop_receiving(thread)
+    return unless thread
+
+    thread.kill
+    thread.join(1)
+  rescue SignalException, StandardError
+    nil
   end
 
   # Push records from the queue to InfluxDB

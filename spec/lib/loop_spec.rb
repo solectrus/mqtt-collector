@@ -63,6 +63,21 @@ describe Loop do
       end
     end
 
+    context 'when terminated by a signal' do
+      before do
+        allow(loop).to receive(:influx_ready?).and_return(true)
+        # "docker stop" sends SIGTERM, which raises SignalException and not
+        # Interrupt
+        allow(MQTT::Client).to receive(:new).and_raise(SignalException, 'TERM')
+      end
+
+      it 'shuts down like an interrupt' do
+        loop.start
+
+        expect(logger.warn_messages).to include(/Exiting/)
+      end
+    end
+
     context 'when InfluxDB is not ready' do
       let(:loop) { described_class.new(config:, max_count: 1, max_wait: 0) }
       let(:config) { Config.new(ENV.to_h, logger:) }
@@ -75,6 +90,19 @@ describe Loop do
 
         expect(MQTT::Client).not_to have_received(:connect)
         expect(logger.error_messages).to include(/InfluxDB not ready after 0 seconds - aborting/)
+      end
+    end
+
+    context 'when a readiness check blocks' do
+      it 'reports the seconds it really waited, not the number of attempts' do
+        fake_influx_push = instance_double(InfluxPush, shutdown: nil, ready?: false)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
+        # A single attempt that blocks for 30 seconds, as an HTTP timeout does
+        allow(loop).to receive(:monotonic_time).and_return(0, 30, 30)
+
+        loop.start
+
+        expect(logger.error_messages).to include(/InfluxDB not ready after 30 seconds - aborting/)
       end
     end
 
