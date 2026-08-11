@@ -41,13 +41,13 @@ describe InfluxPush do
 
       thread = Thread.new { influx_push.run }
 
-      expect { Timeout.timeout(0.5) { sleep 0.01 until influx_push.queue.empty? } }.to raise_error(
+      expect { Timeout.timeout(0.5) { sleep 0.01 until influx_push.pending.zero? } }.to raise_error(
         Timeout::Error,
       )
 
       expect(logger.error_messages).to include(/Error while pushing to InfluxDB: temporarily unreachable/)
       expect(logger.info_messages).to include(/The batch has been queued again/)
-      expect(influx_push.queue.size).to eq(1)
+      expect(influx_push.pending).to eq(1)
 
       influx_push.queue.close
       thread.exit
@@ -83,27 +83,111 @@ describe InfluxPush do
     end
   end
 
+  describe '#pending' do
+    it 'counts a batch until InfluxDB has accepted it' do
+      writing = Queue.new
+      finish = Queue.new
+
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter).tap do |writer|
+          allow(writer).to receive(:push) do
+            writing << true
+            finish.pop
+          end
+        end,
+      )
+
+      expect(influx_push.pending).to eq(0)
+
+      influx_push.enqueue(records:, time:)
+      expect(influx_push.pending).to eq(1)
+
+      thread = Thread.new { influx_push.run }
+
+      # The batch has left the queue, but is not written yet
+      Timeout.timeout(2) { writing.pop }
+      expect(influx_push.queue).to be_empty
+      expect(influx_push.pending).to eq(1)
+
+      finish << true
+      Timeout.timeout(2) { sleep 0.01 until influx_push.pending.zero? }
+
+      influx_push.shutdown
+      thread.join
+    end
+  end
+
+  describe '#enqueue' do
+    it 'keeps the count and the queue in step when the caller is killed' do
+      # A shutdown kills the MQTT thread while it may sit inside enqueue
+      20.times do
+        push = described_class.new(config:)
+        producer = Thread.new { loop { push.enqueue(records:, time:) } }
+        sleep 0.002
+        producer.kill
+        producer.join
+
+        expect(push.pending).to eq(push.queue.size)
+      end
+    end
+  end
+
   describe '#shutdown' do
     it 'ends the run loop once everything is written', vcr: 'influx_success' do
       influx_push.enqueue(records:, time:)
 
       thread = Thread.new { influx_push.run }
-      Timeout.timeout(5) { influx_push.shutdown }
+      Timeout.timeout(2) { influx_push.shutdown }
 
       expect(thread.join(2)).to eq(thread)
+      expect(influx_push.pending).to eq(0)
       expect(logger.error_messages).to be_empty
     end
 
-    it 'logs progress while waiting for the queue to drain' do
+    it 'waits for the pending batches and says how many are left' do
       allow(FluxWriter).to receive(:new).and_return(slow_flux_writer)
 
-      3.times { influx_push.enqueue(records:, time:) }
+      influx_push.enqueue(records:, time:)
 
       thread = Thread.new { influx_push.run }
       Timeout.timeout(5) { influx_push.shutdown }
       thread.join
 
-      expect(logger.info_messages).to include(/Waiting for \d batch\(es\) to be pushed to InfluxDB/)
+      expect(logger.info_messages).to include(/Waiting for 1 batch\(es\) to be pushed to InfluxDB/)
+      expect(influx_push.pending).to eq(0)
+    end
+
+    it 'gives up when InfluxDB stays unreachable, instead of waiting forever' do
+      influx_push = described_class.new(config:, retry_delay: 0.01, shutdown_timeout: 0)
+      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+
+      2.times { influx_push.enqueue(records:, time:) }
+
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { influx_push.shutdown }
+
+      expect(thread.join(2)).to eq(thread)
+      expect(logger.error_messages).to include(
+        /InfluxDB is still unreachable after 0 seconds - giving up on 2 batch\(es\)/,
+      )
+      expect(influx_push.pending).to eq(0)
+    end
+
+    it 'reports a batch that fails while the queue is being closed' do
+      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+
+      influx_push.enqueue(records:, time:)
+
+      # The shutdown closes the queue while this batch is being written
+      allow(influx_push.queue).to receive(:<<).and_raise(ClosedQueueError)
+
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until influx_push.pending.zero? }
+
+      expect(logger.error_messages).to include(/Dropping 1 record\(s\).*never written to InfluxDB/)
+
+      influx_push.shutdown
+      expect(thread.join(2)).to eq(thread)
     end
   end
 

@@ -31,7 +31,7 @@ class Loop
     # Stop receiving MQTT messages
     receive_thread&.exit
   ensure
-    # Push any remaining records to InfluxDB (can take a while)
+    # Push any remaining records to InfluxDB (can take a while, but not forever)
     influx_push.shutdown
 
     # Stop pushing data to InfluxDB
