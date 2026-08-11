@@ -1,5 +1,7 @@
 require 'evaluator'
 
+DEFAULT_HEARTBEAT_INTERVAL = 60
+
 class Mapper
   def initialize(config:)
     @config = config
@@ -41,22 +43,36 @@ class Mapper
   private
 
   def describe_mapping(mapping)
-    result =
-      if signed?(mapping)
-        "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
-          "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
-      else
-        "#{mapping[:measurement]}:#{mapping[:field]}"
-      end
-
     details = [
       "#{"#{mapping[:min]} ≥ " if mapping[:min]}#{mapping[:type]}#{" ≤ #{mapping[:max]}" if mapping[:max]}",
       ('converting NULL to 0' if mapping[:null_to_zero] == 'true'),
       ("named '#{mapping[:name]}'" if mapping[:name]),
       ("expiring after #{mapping[:max_age]}s" if mapping[:max_age]),
+      ("averaged every #{mapping[:aggregate_interval]}s" if mapping[:aggregate_interval]),
+      ('not written to InfluxDB' if mapping[:skip_write] == 'true'),
+      dedup_description(mapping),
     ].compact
 
-    "#{result} (#{details.join(', ')})"
+    "#{mapping_target(mapping)} (#{details.join(', ')})"
+  end
+
+  def dedup_description(mapping)
+    return unless mapping[:dedup] == 'true'
+
+    "deduplicated (heartbeat #{mapping[:heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL}s)"
+  end
+
+  # A mapping that is never written has no destination to name, because
+  # MAPPING_X_FIELD and MAPPING_X_MEASUREMENT are optional for it.
+  def mapping_target(mapping)
+    if signed?(mapping)
+      "#{mapping[:measurement_positive]}:#{mapping[:field_positive]} (+) " \
+        "#{mapping[:measurement_negative]}:#{mapping[:field_negative]} (-)"
+    elsif mapping[:measurement] || mapping[:field]
+      "#{mapping[:measurement]}:#{mapping[:field]}"
+    else
+      '(no InfluxDB field)'
+    end
   end
 
   def records_for_mapping(mapping, message, updated)
@@ -82,11 +98,91 @@ class Mapper
   end
 
   def map_value(mapping, value)
-    if value && signed?(mapping)
-      map_with_sign(mapping, value)
-    else
-      map_default(mapping, value)
+    return [] if mapping[:skip_write] == 'true'
+
+    value = throttled(mapping, value)
+    return [] if value.nil?
+
+    records =
+      if signed?(mapping)
+        map_with_sign(mapping, value)
+      else
+        map_default(mapping, value)
+      end
+
+    deduped(mapping, records)
+  end
+
+  # If MAPPING_X_DEDUP is set, a record is only passed through when its value
+  # actually changed, or every MAPPING_X_HEARTBEAT_INTERVAL seconds (default
+  # 60) regardless of the value, to show that the sender is still alive.
+  def deduped(mapping, records)
+    return records unless mapping[:dedup] == 'true'
+
+    interval = (mapping[:heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL).to_f
+    records.select { |record| due_for_write?(record, interval) }
+  end
+
+  def due_for_write?(record, interval)
+    key = [record[:measurement], record[:field]]
+    last = dedup_state[key]
+
+    if last.nil? || last[:value] != record[:value]
+      dedup_state[key] = { value: record[:value], written_at: monotonic_time }
+      return true
     end
+
+    return false if monotonic_time - last[:written_at] < interval
+
+    last[:written_at] = monotonic_time
+    true
+  end
+
+  def dedup_state
+    @dedup_state ||= {}
+  end
+
+  # If MAPPING_X_AGGREGATE_INTERVAL is set, don't pass every single value
+  # through - instead collect them and only return the average once the
+  # interval has passed, so high-frequency updates get throttled down to one
+  # write per interval. Returns the value unchanged if no interval is set, or
+  # if there is no value to collect.
+  def throttled(mapping, value)
+    interval = mapping[:aggregate_interval]&.to_f
+    return value if value.nil? || interval.nil?
+
+    average = aggregate(mapping_key(mapping), value, interval)
+    return nil if average.nil?
+
+    convert_type(average, mapping)
+  end
+
+  # Collects values per mapping in a fixed window starting with the first
+  # value received for it. Returns nil while the window is still open, or the
+  # average of all values collected so far once the interval has elapsed -
+  # at which point the window resets, to start fresh with the next value.
+  def aggregate(key, value, interval)
+    now = monotonic_time
+    buffer = (aggregation_buffers[key] ||= { sum: 0.0, count: 0, window_start: now })
+
+    buffer[:sum] += value
+    buffer[:count] += 1
+
+    return nil if now - buffer[:window_start] < interval
+
+    average = buffer[:sum] / buffer[:count]
+    aggregation_buffers.delete(key)
+    average
+  end
+
+  def aggregation_buffers
+    @aggregation_buffers ||= {}
+  end
+
+  # Identifies a mapping that has no MAPPING_X_NAME, so the aggregation buffer
+  # can hold one entry per mapping.
+  def mapping_key(mapping)
+    "MAPPING_#{mapping[:mapping_group]}"
   end
 
   def virtual_value_from(mapping)
@@ -222,9 +318,11 @@ class Mapper
   end
 
   # The field a warning names. A signed mapping has no :field, so its
-  # positive one stands for the pair.
+  # positive one stands for the pair. A mapping with SKIP_WRITE has no field
+  # at all, so its MAPPING_X_NAME stands in - Config requires that name, so a
+  # warning can always be traced back to a mapping.
   def target_field(mapping)
-    mapping[:field] || mapping[:field_positive]
+    mapping[:field] || mapping[:field_positive] || mapping[:name]
   end
 
   def signed?(mapping)

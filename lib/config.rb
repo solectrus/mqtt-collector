@@ -4,6 +4,9 @@ require 'evaluator'
 
 MAPPING_REGEX = /\AMAPPING_(\d+)_(.+)\z/
 MAPPING_TYPES = %w[integer float string boolean].freeze
+# Only a number can be averaged, so MAPPING_X_AGGREGATE_INTERVAL is limited
+# to these types
+NUMERIC_MAPPING_TYPES = %w[integer float].freeze
 # Evaluator replaces every non-alphanumeric character of a formula variable
 # by an underscore and downcases it. Names that differ in those characters
 # only (my-power and my_power, or Washer and washer) would become the same
@@ -242,22 +245,97 @@ class Config
 
       validate_name!(mapping, index)
       validate_max_age!(mapping)
+      validate_skip_write!(mapping)
+      validate_dedup!(mapping)
+      validate_aggregate_interval!(mapping)
+      validate_heartbeat_interval!(mapping)
       validate_destination!(mapping)
     end
   end
 
   def validate_max_age!(mapping)
-    max_age = mapping[:max_age]
-    return unless max_age
+    return unless mapping[:max_age]
 
     unless mapping[:name]
       raise Config::Error,
             "Variable #{mapping_var(mapping, :max_age)} requires #{mapping_var(mapping, :name)} to be set"
     end
 
-    return if max_age.match?(/\A\d+\z/) && max_age.to_i.positive?
+    validate_seconds!(mapping, :max_age)
+  end
 
-    invalid!(mapping, :max_age, "#{max_age}. Must be a positive number of seconds")
+  # SKIP_WRITE keeps a value in memory, so a formula can read it. Without a
+  # MAPPING_X_NAME no formula can reference the value, and the mapping does
+  # nothing at all.
+  def validate_skip_write!(mapping)
+    return unless mapping[:skip_write]
+
+    validate_mapping!(mapping, :skip_write, allow_list: %w[true false])
+    return unless mapping[:skip_write] == 'true'
+    return if mapping[:name]
+
+    raise Config::Error,
+          "Variable #{mapping_var(mapping, :skip_write)}=true requires " \
+          "#{mapping_var(mapping, :name)} to be set"
+  end
+
+  def validate_dedup!(mapping)
+    return unless mapping[:dedup]
+
+    validate_mapping!(mapping, :dedup, allow_list: %w[true false])
+    validate_write_option!(mapping, :dedup) if mapping[:dedup] == 'true'
+  end
+
+  # Averaging a string or a boolean raises a TypeError on every message, and
+  # Loop reports it once per message instead of once at start. So the
+  # combination is refused here.
+  def validate_aggregate_interval!(mapping)
+    return unless mapping[:aggregate_interval]
+
+    validate_write_option!(mapping, :aggregate_interval)
+
+    unless NUMERIC_MAPPING_TYPES.include?(mapping[:type])
+      invalid!(mapping, :aggregate_interval,
+               "#{mapping[:type]} values cannot be averaged. #{mapping_var(mapping, :type)} " \
+               "must be one of: #{NUMERIC_MAPPING_TYPES.join(', ')}",)
+    end
+
+    validate_seconds!(mapping, :aggregate_interval)
+  end
+
+  # The heartbeat is the interval MAPPING_X_DEDUP holds a repeated value back
+  # for. Without it, the variable does nothing.
+  def validate_heartbeat_interval!(mapping)
+    return unless mapping[:heartbeat_interval]
+
+    unless mapping[:dedup] == 'true'
+      raise Config::Error,
+            "Variable #{mapping_var(mapping, :heartbeat_interval)} requires " \
+            "#{mapping_var(mapping, :dedup)}=true"
+    end
+
+    validate_seconds!(mapping, :heartbeat_interval)
+  end
+
+  # An option that only controls writing does nothing on a mapping that is
+  # never written. Naming it is better than ignoring it, because a variable
+  # without effect is a mistake in the configuration.
+  def validate_write_option!(mapping, key)
+    return unless mapping[:skip_write] == 'true'
+
+    invalid!(mapping, key,
+             "it has no effect, because #{mapping_var(mapping, :skip_write)}=true " \
+             'stops every write of this mapping',)
+  end
+
+  # Every duration is a whole positive number of seconds. Mapper reads it with
+  # to_f, which turns a typo into 0.0 - a value that silently disables the
+  # option it belongs to. So the error is reported here instead.
+  def validate_seconds!(mapping, key)
+    value = mapping[key]
+    return if value.match?(/\A\d+\z/) && value.to_i.positive?
+
+    invalid!(mapping, key, "#{value}. Must be a positive number of seconds")
   end
 
   # A mapping without a topic is virtual and gets its value from a formula.
@@ -370,7 +448,10 @@ class Config
     mapping[:name] || "MAPPING_#{mapping[:mapping_group]}"
   end
 
+  # A mapping that is never written to InfluxDB does not need a destination
   def validate_destination!(mapping)
+    return if mapping[:skip_write] == 'true'
+
     if mapping[:field_positive] || mapping[:field_negative]
       validate_mapping!(mapping, :field_positive)
       validate_mapping!(mapping, :field_negative)

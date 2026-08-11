@@ -249,4 +249,31 @@ describe Config, '#mapping' do
       )
     end
   end
+
+  context 'with a SKIP_WRITE mapping that omits FIELD and MEASUREMENT' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_NAME' => 'inverter_power',
+          'MAPPING_0_SKIP_WRITE' => 'true',
+        },
+      )
+    end
+
+    it 'does not raise, since the value is never written to InfluxDB' do
+      expect(mappings).to eq(
+        [
+          {
+            topic: 'senec/0/ENERGY/GUI_INVERTER_POWER',
+            type: 'integer',
+            name: 'inverter_power',
+            skip_write: 'true',
+            mapping_group: '0',
+          },
+        ],
+      )
+    end
+  end
 end

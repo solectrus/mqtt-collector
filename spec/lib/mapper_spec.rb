@@ -416,6 +416,139 @@ BOOLEAN_LOGIC_ENV = {
   'MAPPING_3_FORMULA' => '{flag} == false',
 }.freeze
 
+AGGREGATE_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/fast',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'fast_value',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_AGGREGATE_INTERVAL' => '5',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/plain',
+  'MAPPING_1_MEASUREMENT' => 'PV',
+  'MAPPING_1_FIELD' => 'plain_value',
+  'MAPPING_1_TYPE' => 'integer',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/signed',
+  'MAPPING_2_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_2_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_2_FIELD_POSITIVE' => 'signed_plus',
+  'MAPPING_2_FIELD_NEGATIVE' => 'signed_minus',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_AGGREGATE_INTERVAL' => '5',
+  #
+  # Aggregated mapping a formula reads
+  'MAPPING_3_TOPIC' => 'sensor/named',
+  'MAPPING_3_MEASUREMENT' => 'PV',
+  'MAPPING_3_FIELD' => 'named_value',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'named_value',
+  'MAPPING_3_AGGREGATE_INTERVAL' => '5',
+  #
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'named_double',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_FORMULA' => '{named_value} * 2',
+  #
+  # Aggregation and deduplication on the same mapping
+  'MAPPING_5_TOPIC' => 'sensor/both',
+  'MAPPING_5_MEASUREMENT' => 'PV',
+  'MAPPING_5_FIELD' => 'both_value',
+  'MAPPING_5_TYPE' => 'integer',
+  'MAPPING_5_AGGREGATE_INTERVAL' => '5',
+  'MAPPING_5_DEDUP' => 'true',
+).freeze
+
+SKIP_WRITE_ENV = BASE_ENV.merge(
+  'MAPPING_0_TOPIC' => 'sensor/washer',
+  'MAPPING_0_MEASUREMENT' => 'Washer',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_NAME' => 'washer',
+  'MAPPING_0_SKIP_WRITE' => 'true',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/dryer',
+  'MAPPING_1_MEASUREMENT' => 'Dryer',
+  'MAPPING_1_FIELD' => 'power',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_NAME' => 'dryer',
+  #
+  # Virtual mapping: no topic, calculated from washer (skipped) and dryer (written)
+  'MAPPING_2_MEASUREMENT' => 'Household',
+  'MAPPING_2_FIELD' => 'total_power',
+  'MAPPING_2_TYPE' => 'integer',
+  'MAPPING_2_FORMULA' => '{washer} + {dryer}',
+  #
+  # Skipped mapping without FIELD/MEASUREMENT at all, so a warning has only
+  # the name to identify it
+  'MAPPING_3_TOPIC' => 'sensor/heatpump',
+  'MAPPING_3_TYPE' => 'integer',
+  'MAPPING_3_NAME' => 'heatpump',
+  'MAPPING_3_SKIP_WRITE' => 'true',
+  'MAPPING_3_MAX' => '100',
+  #
+  # Virtual mapping without FIELD/MEASUREMENT, calculated from a value that
+  # never arrives
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_NAME' => 'heatpump_double',
+  'MAPPING_4_SKIP_WRITE' => 'true',
+  'MAPPING_4_FORMULA' => '{washer} + {heatpump}',
+).freeze
+
+DEDUP_ENV = {
+  'MQTT_HOST' => '1.2.3.4',
+  'MQTT_PORT' => '1883',
+  # ---
+  'INFLUX_HOST' => 'influx.example.com',
+  'INFLUX_SCHEMA' => 'https',
+  'INFLUX_PORT' => '443',
+  'INFLUX_TOKEN' => 'this.is.just.an.example',
+  'INFLUX_ORG' => 'solectrus',
+  'INFLUX_BUCKET' => 'my-bucket',
+  # ---
+  'MAPPING_0_TOPIC' => 'sensor/power',
+  'MAPPING_0_MEASUREMENT' => 'PV',
+  'MAPPING_0_FIELD' => 'power',
+  'MAPPING_0_TYPE' => 'integer',
+  'MAPPING_0_DEDUP' => 'true',
+  'MAPPING_0_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_1_TOPIC' => 'sensor/grid',
+  'MAPPING_1_MEASUREMENT_POSITIVE' => 'PV',
+  'MAPPING_1_MEASUREMENT_NEGATIVE' => 'PV',
+  'MAPPING_1_FIELD_POSITIVE' => 'grid_import',
+  'MAPPING_1_FIELD_NEGATIVE' => 'grid_export',
+  'MAPPING_1_TYPE' => 'integer',
+  'MAPPING_1_DEDUP' => 'true',
+  'MAPPING_1_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_2_TOPIC' => 'sensor/leak',
+  'MAPPING_2_MEASUREMENT' => 'Leak',
+  'MAPPING_2_FIELD' => 'detected',
+  'MAPPING_2_TYPE' => 'boolean',
+  'MAPPING_2_DEDUP' => 'true',
+  'MAPPING_2_HEARTBEAT_INTERVAL' => '60',
+  #
+  'MAPPING_3_TOPIC' => 'sensor/status',
+  'MAPPING_3_MEASUREMENT' => 'System',
+  'MAPPING_3_FIELD' => 'status',
+  'MAPPING_3_TYPE' => 'string',
+  'MAPPING_3_DEDUP' => 'true',
+  'MAPPING_3_HEARTBEAT_INTERVAL' => '60',
+  #
+  # Virtual mapping with DEDUP, calculated from a mapping without it
+  'MAPPING_4_TOPIC' => 'sensor/base',
+  'MAPPING_4_MEASUREMENT' => 'PV',
+  'MAPPING_4_FIELD' => 'base',
+  'MAPPING_4_TYPE' => 'integer',
+  'MAPPING_4_NAME' => 'base',
+  #
+  'MAPPING_5_MEASUREMENT' => 'PV',
+  'MAPPING_5_FIELD' => 'base_double',
+  'MAPPING_5_TYPE' => 'integer',
+  'MAPPING_5_FORMULA' => '{base} * 2',
+  'MAPPING_5_DEDUP' => 'true',
+}.freeze
+
 describe Mapper do
   subject(:mapper) { described_class.new(config:) }
 
@@ -1139,6 +1272,354 @@ describe Mapper do
         ],
       )
       expect(logger.warn_messages).to be_empty
+    end
+  end
+
+  context 'with MAPPING_X_AGGREGATE_INTERVAL' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(AGGREGATE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'does not affect a mapping without AGGREGATE_INTERVAL' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/plain', '42')
+
+      expect(hash).to eq([{ field: 'plain_value', measurement: 'PV', value: 42 }])
+    end
+
+    it 'collects values without writing anything until the interval elapses' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/fast', '10')
+      expect(hash).to eq([])
+
+      at(1002.0) # 2s later - still within the 5s window
+      hash = mapper.records_for('sensor/fast', '20')
+      expect(hash).to eq([])
+    end
+
+    it 'writes the average of all collected values once the interval elapses' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1002.0)
+      mapper.records_for('sensor/fast', '20')
+
+      at(1006.0) # 6s after the window started - beyond the 5s interval
+      hash = mapper.records_for('sensor/fast', '30')
+
+      # average of 10, 20, 30 == 20
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 20 }])
+    end
+
+    it 'starts a fresh window after flushing, instead of carrying over old values' do
+      at(1000.0)
+      mapper.records_for('sensor/fast', '10')
+
+      at(1006.0)
+      mapper.records_for('sensor/fast', '20') # flushes average of [10, 20] == 15
+
+      at(1007.0) # new window just started - not yet due
+      hash = mapper.records_for('sensor/fast', '100')
+      expect(hash).to eq([])
+
+      at(1012.0) # 5s into the new window
+      hash = mapper.records_for('sensor/fast', '200')
+      expect(hash).to eq([{ field: 'fast_value', measurement: 'PV', value: 150 }])
+    end
+
+    it 'lets a formula see every value, not just the average' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/named', '10')
+      # The aggregated mapping waits for its window, the formula does not
+      expect(hash).to eq([{ field: 'named_double', measurement: 'PV', value: 20 }])
+
+      at(1002.0)
+      hash = mapper.records_for('sensor/named', '20')
+      expect(hash).to eq([{ field: 'named_double', measurement: 'PV', value: 40 }])
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/named', '30')
+      expect(hash).to eq(
+        [
+          # Average of 10, 20 and 30 - while the formula uses the latest value
+          { field: 'named_value', measurement: 'PV', value: 20 },
+          { field: 'named_double', measurement: 'PV', value: 60 },
+        ],
+      )
+    end
+
+    it 'deduplicates the average, not every single value' do
+      at(1000.0)
+      mapper.records_for('sensor/both', '10')
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/both', '10')
+      expect(hash).to eq([{ field: 'both_value', measurement: 'PV', value: 10 }])
+
+      # Next window, same average - held back within the heartbeat interval
+      at(1007.0)
+      mapper.records_for('sensor/both', '10')
+
+      at(1013.0)
+      expect(mapper.records_for('sensor/both', '10')).to eq([])
+    end
+
+    it 'applies the aggregation before splitting into positive/negative fields' do
+      at(1000.0)
+      mapper.records_for('sensor/signed', '-10')
+
+      at(1006.0)
+      hash = mapper.records_for('sensor/signed', '30')
+
+      # average of -10 and 30 == 10 (positive)
+      expect(hash).to eq(
+        [
+          { field: 'signed_minus', measurement: 'PV', value: 0 },
+          { field: 'signed_plus', measurement: 'PV', value: 10 },
+        ],
+      )
+    end
+  end
+
+  context 'with MAPPING_X_SKIP_WRITE' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(SKIP_WRITE_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    it 'does not write the skipped mapping, but still writes a regular one' do
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'Dryer', value: 500 }])
+    end
+
+    it 'never writes the skipped mapping, even alone on its own topic' do
+      hash = mapper.records_for('sensor/washer', '300')
+
+      expect(hash).to eq([])
+    end
+
+    it 'still uses the skipped mapping value in a virtual mapping formula' do
+      mapper.records_for('sensor/washer', '300')
+      hash = mapper.records_for('sensor/dryer', '500')
+
+      expect(hash).to eq(
+        [
+          { field: 'power', measurement: 'Dryer', value: 500 },
+          { field: 'total_power', measurement: 'Household', value: 800 },
+        ],
+      )
+    end
+
+    it 'mentions skipped mappings in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/washer')).to eq(
+        "Washer:power (integer, named 'washer', not written to InfluxDB)",
+      )
+      expect(mapper.formatted_mapping('sensor/dryer')).to eq("Dryer:power (integer, named 'dryer')")
+    end
+
+    it 'does not require FIELD/MEASUREMENT for a skipped mapping' do
+      hash = mapper.records_for('sensor/heatpump', '42')
+
+      expect(hash).to eq([])
+      expect(mapper.formatted_mapping('sensor/heatpump')).to eq(
+        "(no InfluxDB field) (integer ≤ 100, named 'heatpump', not written to InfluxDB)",
+      )
+    end
+
+    it 'names a skipped mapping without a field by its MAPPING_X_NAME' do
+      mapper.records_for('sensor/heatpump', '999')
+
+      expect(logger.warn_messages).to eq(['  Ignoring heatpump: 999 exceeds maximum of 100'])
+    end
+
+    it 'names a skipped virtual mapping without a field in an unresolved formula' do
+      mapper.records_for('sensor/washer', '300') # {heatpump} was never received
+
+      expect(logger.warn_messages).to include(
+        '  Formula for heatpump_double could not be evaluated ' \
+        '(heatpump [sensor/heatpump]: never received), ignoring.',
+      )
+    end
+  end
+
+  context 'with MAPPING_X_DEDUP' do
+    subject(:mapper) { described_class.new(config:) }
+
+    let(:config) { Config.new(DEDUP_ENV, logger:) }
+    let(:logger) { MemoryLogger.new }
+
+    def at(time)
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'always writes the first value, even if it is zero' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
+    end
+
+    it 'suppresses a repeated zero within the heartbeat interval' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '0')
+
+      at(1030.0) # 30s later - within the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([])
+    end
+
+    it 'writes a repeated zero again once the heartbeat interval has passed' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '0')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/power', '0')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 0 }])
+    end
+
+    it 'always writes a value once it actually changes' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1000.1)
+      hash = mapper.records_for('sensor/power', '200')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 200 }])
+    end
+
+    it 'suppresses a repeated non-zero value within the heartbeat interval' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1030.0) # 30s later - within the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([])
+    end
+
+    it 'writes a repeated non-zero value again once the heartbeat interval has passed' do
+      at(1000.0)
+      mapper.records_for('sensor/power', '100')
+
+      at(1061.0) # 61s later - beyond the 60s heartbeat interval
+      hash = mapper.records_for('sensor/power', '100')
+
+      expect(hash).to eq([{ field: 'power', measurement: 'PV', value: 100 }])
+    end
+
+    it 'treats each field of a positive/negative mapping independently' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/grid', '100') # import
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 0 },
+          { field: 'grid_import', measurement: 'PV', value: 100 },
+        ],
+      )
+
+      # grid_export stays at 0 (suppressed within heartbeat), grid_import changes - still written
+      at(1000.1)
+      hash = mapper.records_for('sensor/grid', '150')
+      expect(hash).to eq([{ field: 'grid_import', measurement: 'PV', value: 150 }])
+
+      # Now import goes quiet at 0, export becomes non-zero - both change, both written
+      at(1000.2)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 50 },
+          { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
+
+      # grid_import (now 0) and grid_export (still 50) both repeat - suppressed within heartbeat
+      at(1000.3)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq([])
+
+      # Well beyond the heartbeat interval - both repeated values are written again,
+      # regardless of grid_import still being zero
+      at(1061.0)
+      hash = mapper.records_for('sensor/grid', '-50')
+      expect(hash).to eq(
+        [
+          { field: 'grid_export', measurement: 'PV', value: 50 },
+          { field: 'grid_import', measurement: 'PV', value: 0 },
+        ],
+      )
+    end
+
+    it 'applies dedup to a virtual mapping as well' do
+      at(1000.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq(
+        [
+          { field: 'base', measurement: 'PV', value: 10 },
+          { field: 'base_double', measurement: 'PV', value: 20 },
+        ],
+      )
+
+      # The source has no DEDUP and is written again, the virtual one is held back
+      at(1030.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq([{ field: 'base', measurement: 'PV', value: 10 }])
+
+      # Beyond the heartbeat interval, the virtual mapping writes again
+      at(1061.0)
+      hash = mapper.records_for('sensor/base', '10')
+      expect(hash).to eq(
+        [
+          { field: 'base', measurement: 'PV', value: 10 },
+          { field: 'base_double', measurement: 'PV', value: 20 },
+        ],
+      )
+    end
+
+    it 'mentions dedup and the heartbeat interval in the formatted description' do
+      expect(mapper.formatted_mapping('sensor/power')).to eq(
+        'PV:power (integer, deduplicated (heartbeat 60s))',
+      )
+    end
+
+    it 'still applies the heartbeat to a repeated "false" boolean' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'false')
+
+      at(1000.0 + DEFAULT_HEARTBEAT_INTERVAL + 1)
+      hash = mapper.records_for('sensor/leak', 'false')
+
+      expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: false }])
+    end
+
+    it 'still applies the heartbeat to a repeated "true" boolean' do
+      at(1000.0)
+      mapper.records_for('sensor/leak', 'true')
+
+      at(1061.0)
+      hash = mapper.records_for('sensor/leak', 'true')
+
+      expect(hash).to eq([{ field: 'detected', measurement: 'Leak', value: true }])
+    end
+
+    it 'still applies the heartbeat to a repeated string value' do
+      at(1000.0)
+      mapper.records_for('sensor/status', 'idle')
+
+      at(1030.0) # within the heartbeat interval - suppressed
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([])
+
+      at(1061.0) # beyond the heartbeat interval - written again
+      hash = mapper.records_for('sensor/status', 'idle')
+      expect(hash).to eq([{ field: 'status', measurement: 'System', value: 'idle' }])
     end
   end
 end
