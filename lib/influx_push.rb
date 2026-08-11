@@ -45,6 +45,25 @@ class InfluxPush
     flux_writer.ready?
   end
 
+  # Wait until InfluxDB is reachable, for up to timeout seconds, and report
+  # whether it is - the collector has nothing to do without InfluxDB. The name
+  # says that this waits, which a question mark would hide.
+  def wait_until_ready(timeout:) # rubocop:disable Naming/PredicateMethod
+    logger.info 'Wait until InfluxDB is ready ...'
+
+    started = monotonic_time
+    sleep 1 until (ready = ready?) || waited_long_enough?(started, timeout)
+
+    if ready
+      logger.info 'InfluxDB is ready.'
+      true
+    else
+      waited = (monotonic_time - started).round
+      logger.error "InfluxDB not ready after #{waited} seconds - aborting."
+      false
+    end
+  end
+
   # Hand a batch of records over to be written. The time travels with them,
   # so a write delayed by a retry still lands at the point in time the values
   # were actually received. The topic travels with them as well, because two
@@ -92,6 +111,13 @@ class InfluxPush
   end
 
   private
+
+  # A ping can block for as long as the HTTP timeout, so the wait counts real
+  # seconds. Counting the attempts instead would report 12 seconds for a wait
+  # that took minutes.
+  def waited_long_enough?(started, timeout)
+    timeout && monotonic_time - started >= timeout
+  end
 
   def push(batch)
     flux_writer.push(batch[:records], time: batch[:time])

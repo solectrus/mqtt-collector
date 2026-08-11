@@ -17,6 +17,37 @@ describe InfluxPush do
     end
   end
 
+  describe '#wait_until_ready' do
+    it 'waits and asks again until InfluxDB answers' do
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter).tap do |writer|
+          allow(writer).to receive(:ready?).and_return(false, true)
+        end,
+      )
+      push = described_class.new(config:)
+      allow(push).to receive(:sleep)
+
+      expect(push.wait_until_ready(timeout: 12)).to be true
+
+      expect(logger.info_messages).to include(/Wait until InfluxDB is ready/)
+      expect(logger.info_messages).to include(/InfluxDB is ready/)
+      expect(push).to have_received(:sleep).once
+    end
+
+    it 'reports the seconds it really waited, not the number of attempts' do
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter, ready?: false),
+      )
+      push = described_class.new(config:)
+      # A single attempt that blocks for 30 seconds, as an HTTP timeout does
+      allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(0, 30, 30)
+
+      expect(push.wait_until_ready(timeout: 12)).to be false
+
+      expect(logger.error_messages).to include(/InfluxDB not ready after 30 seconds - aborting/)
+    end
+  end
+
   describe '#run' do
     it 'pushes a single queued batch to InfluxDB', vcr: 'influx_success' do
       influx_push.enqueue(records:, topic:, time:)
@@ -263,6 +294,22 @@ describe InfluxPush do
       expect(attempts).to eq(2)
       expect(influx_push.pending).to eq(0)
       expect(logger.error_messages).not_to include(/giving up/)
+    end
+
+    it 'shortens the pause between retries, so a batch gets more than one attempt' do
+      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+      # The regular delay is longer than the whole shutdown budget
+      influx_push = described_class.new(config:, retry_delay: 60, shutdown_timeout: 1)
+
+      influx_push.enqueue(records:, topic:, time:)
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until logger.error_messages.any?(/Error while pushing/) }
+
+      Timeout.timeout(5) { influx_push.shutdown }
+
+      expect(thread.join(2)).to eq(thread)
+      expect(logger.error_messages.grep(/Error while pushing/).size).to be > 1
+      expect(influx_push.pending).to eq(0)
     end
 
     it 'gives up when InfluxDB stays unreachable, instead of waiting forever' do
