@@ -354,6 +354,8 @@ class Mapper
     convert_type(message, mapping)
   end
 
+  # Config accepts the four types of MAPPING_TYPES only, so the last one needs
+  # no test of its own
   def convert_type(message, mapping)
     case mapping[:type]
     when 'float'
@@ -362,7 +364,7 @@ class Mapper
       convert_integer(message, mapping)
     when 'boolean'
       convert_boolean(message, mapping)
-    when 'string'
+    else
       convert_string(message, mapping)
     end
   end
@@ -409,9 +411,11 @@ class Mapper
     json = parse_json(message)
     return unless json
 
+    # Only a mapping with one of the two variables gets here, so the absence
+    # of JSON_PATH means JSON_KEY is set
     if mapping[:json_path]
       JsonPath.new(mapping[:json_path]).first(json)
-    elsif mapping[:json_key]
+    else
       json[mapping[:json_key]]
     end
   end

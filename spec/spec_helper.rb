@@ -1,5 +1,15 @@
 require 'simplecov'
-SimpleCov.start
+SimpleCov.start do
+  enable_coverage :branch
+
+  skip '/spec/'
+
+  # Counts a file that no spec loads as well, instead of leaving it out of
+  # the report
+  cover 'lib/**/*.rb'
+
+  minimum_coverage line: 100, branch: 100
+end
 
 require 'bundler/setup'
 Bundler.require

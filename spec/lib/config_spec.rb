@@ -127,6 +127,15 @@ describe Config do
       expect(config.mqtt_url).to eq('mqtt://1.2.3.4:1883')
       expect(config.mqtt_ssl).to be false
     end
+
+    context 'when MQTT_SSL is enabled' do
+      let(:env) { valid_env.merge('MQTT_SSL' => 'true') }
+
+      it 'uses the encrypted schema in the URL' do
+        expect(config.mqtt_ssl).to be true
+        expect(config.mqtt_url).to eq('mqtts://1.2.3.4:1883')
+      end
+    end
   end
 
   describe '#mappings' do

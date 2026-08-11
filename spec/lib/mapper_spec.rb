@@ -1040,6 +1040,52 @@ describe Mapper do
     end
   end
 
+  context 'with a float mapping limited by MIN and MAX' do
+    let(:config) do
+      Config.new(
+        BASE_ENV.merge(
+          'MAPPING_0_TOPIC' => 'sensor/temp',
+          'MAPPING_0_MEASUREMENT' => 'HEATPUMP',
+          'MAPPING_0_FIELD' => 'temp',
+          'MAPPING_0_TYPE' => 'float',
+          'MAPPING_0_MIN' => '-10.5',
+          'MAPPING_0_MAX' => '99.5',
+        ),
+        logger:,
+      )
+    end
+
+    it 'keeps a value between the limits' do
+      expect(mapper.records_for('sensor/temp', '21.5')).to eq(
+        [{ field: 'temp', measurement: 'HEATPUMP', value: 21.5 }],
+      )
+    end
+
+    it 'ignores a value below the minimum' do
+      expect(mapper.records_for('sensor/temp', '-20.5')).to eq([])
+
+      expect(logger.warn_messages).to include(
+        /Ignoring temp: -20.5 is below minimum of -10.5/,
+      )
+    end
+
+    it 'ignores a value above the maximum' do
+      expect(mapper.records_for('sensor/temp', '100.5')).to eq([])
+
+      expect(logger.warn_messages).to include(
+        /Ignoring temp: 100.5 exceeds maximum of 99.5/,
+      )
+    end
+  end
+
+  context 'with a message that is not a string' do
+    it 'names the message it cannot read as JSON' do
+      expect { mapper.records_for('somewhere/ATTR', 42) }.to raise_error(
+        'Message is not a string: 42',
+      )
+    end
+  end
+
   context 'with MAPPING_X_MAX_AGE' do
     let(:config) { Config.new(MAX_AGE_ENV, logger:) }
 
@@ -1283,6 +1329,12 @@ describe Mapper do
 
     def at(time)
       allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(time)
+    end
+
+    it 'shows the interval in a formatted mapping' do
+      expect(mapper.formatted_mapping('sensor/fast')).to eq(
+        'PV:fast_value (integer, averaged every 5s)',
+      )
     end
 
     it 'does not affect a mapping without AGGREGATE_INTERVAL' do

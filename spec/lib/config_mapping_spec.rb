@@ -250,6 +250,35 @@ describe Config, '#mapping' do
     end
   end
 
+  context 'with SKIP_WRITE set to false' do
+    let(:env) do
+      other_env.merge(
+        {
+          'MAPPING_0_TOPIC' => 'senec/0/ENERGY/GUI_INVERTER_POWER',
+          'MAPPING_0_MEASUREMENT' => 'PV',
+          'MAPPING_0_FIELD' => 'inverter_power',
+          'MAPPING_0_TYPE' => 'integer',
+          'MAPPING_0_SKIP_WRITE' => 'false',
+        },
+      )
+    end
+
+    it 'does not require a NAME, because the mapping is written' do
+      expect(mappings).to eq(
+        [
+          {
+            topic: 'senec/0/ENERGY/GUI_INVERTER_POWER',
+            measurement: 'PV',
+            field: 'inverter_power',
+            type: 'integer',
+            skip_write: 'false',
+            mapping_group: '0',
+          },
+        ],
+      )
+    end
+  end
+
   context 'with a SKIP_WRITE mapping that omits FIELD and MEASUREMENT' do
     let(:env) do
       other_env.merge(
