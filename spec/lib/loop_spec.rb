@@ -11,6 +11,9 @@ describe Loop do
     )
   end
   let(:logger) { MemoryLogger.new }
+  let(:fake_influx_push) do
+    instance_double(InfluxPush, wait_until_ready: true, run: nil, shutdown: nil, enqueue: nil)
+  end
 
   let(:server) do
     server = MQTT::FakeServer.new
@@ -31,13 +34,11 @@ describe Loop do
         expect(logger.info_messages).to include(/message = 80.0/)
         expect(logger.info_messages).to include(/PV:battery_soc = 80.0/)
         expect(logger.error_messages).to be_empty
-
-        loop.stop
       end
     end
 
     context 'when the MQTT server is not running' do
-      before { allow(loop).to receive(:influx_ready?).and_return(true) }
+      before { allow(loop).to receive(:influx_push).and_return(fake_influx_push) }
 
       it 'handles errors' do
         loop.start
@@ -45,14 +46,12 @@ describe Loop do
         expect(logger.error_messages).to include(
           /Connection refused.*will retry again in 1 seconds/,
         )
-
-        loop.stop
       end
     end
 
     context 'when interrupted' do
       before do
-        allow(loop).to receive(:influx_ready?).and_return(true)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
         allow(MQTT::Client).to receive(:new).and_raise(Interrupt)
       end
 
@@ -65,7 +64,7 @@ describe Loop do
 
     context 'when terminated by a signal' do
       before do
-        allow(loop).to receive(:influx_ready?).and_return(true)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
         # "docker stop" sends SIGTERM, which raises SignalException and not
         # Interrupt
         allow(MQTT::Client).to receive(:new).and_raise(SignalException, 'TERM')
@@ -93,43 +92,9 @@ describe Loop do
       end
     end
 
-    context 'when a readiness check blocks' do
-      it 'reports the seconds it really waited, not the number of attempts' do
-        fake_influx_push = instance_double(InfluxPush, shutdown: nil, ready?: false)
-        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
-        # A single attempt that blocks for 30 seconds, as an HTTP timeout does
-        allow(loop).to receive(:monotonic_time).and_return(0, 30, 30)
-
-        loop.start
-
-        expect(logger.error_messages).to include(/InfluxDB not ready after 30 seconds - aborting/)
-      end
-    end
-
-    context 'when InfluxDB becomes ready only after retrying' do
-      before do
-        allow(loop).to receive(:sleep)
-        allow(loop).to receive(:receive_loop)
-        allow(loop).to receive(:push_loop)
-
-        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
-        allow(fake_influx_push).to receive(:ready?).and_return(false, true)
-      end
-
-      let(:fake_influx_push) { instance_double(InfluxPush, shutdown: nil) }
-
-      it 'waits and retries the readiness check before continuing' do
-        loop.start
-
-        expect(logger.info_messages).to include(/Wait until InfluxDB is ready/)
-        expect(logger.info_messages).to include(/InfluxDB is ready/)
-      end
-    end
-
     context 'when the push thread dies unexpectedly' do
       before do
-        allow(loop).to receive_messages(influx_ready?: true,
-                                        influx_push: instance_double(InfluxPush, shutdown: nil),)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
         allow(loop).to receive(:receive_loop) { sleep 2 }
         allow(loop).to receive(:push_loop).and_raise('the push thread is broken')
       end
@@ -139,14 +104,56 @@ describe Loop do
       end
     end
 
+    context 'when the connection breaks while receiving' do
+      let(:loop) { described_class.new(config:, retry_wait: 0) }
+      let(:config) { Config.new(ENV.to_h, logger:) }
+
+      it 'closes the broken connection and opens a new one' do
+        client = instance_double(MQTT::Client, subscribe: nil)
+        allow(MQTT::Client).to receive(:connect).and_return(client)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
+        # A connection that is already broken can refuse the disconnect too
+        allow(client).to receive(:disconnect).and_raise(MQTT::ProtocolException, 'broken pipe')
+        # Without max_count the loop retries forever, so the second attempt
+        # ends it the way Ctrl-C does
+        allow(client).to receive(:get).and_invoke(
+          -> { raise 'connection lost' },
+          -> { raise Interrupt },
+        )
+
+        loop.start
+
+        expect(logger.error_messages).to include(/connection lost, will retry again in 0 seconds/)
+        # Every attempt opens its own connection and closes it again
+        expect(MQTT::Client).to have_received(:connect).twice
+        expect(client).to have_received(:disconnect).twice
+      end
+    end
+
+    context 'when a message maps to no records' do
+      let(:loop) { described_class.new(config:, max_count: 2) }
+      let(:config) { Config.new(ENV.to_h, logger:) }
+
+      it 'queues the message that has records only' do
+        topic = 'senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE'
+        client = instance_double(MQTT::Client, subscribe: nil, disconnect: nil)
+        allow(MQTT::Client).to receive(:connect).and_return(client)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
+        # An empty message maps to no record at all
+        allow(client).to receive(:get).and_return([topic, ''], [topic, '80.0'])
+
+        loop.start
+
+        expect(fake_influx_push).to have_received(:enqueue).once
+      end
+    end
+
     context 'when shutting down' do
       before do
-        allow(loop).to receive_messages(influx_ready?: true, influx_push: fake_influx_push)
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
         allow(loop).to receive(:receive_loop)
         allow(loop).to receive(:push_loop)
       end
-
-      let(:fake_influx_push) { instance_double(InfluxPush, shutdown: nil) }
 
       it 'lets InfluxPush write what is left before ending' do
         loop.start

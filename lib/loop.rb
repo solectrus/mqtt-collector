@@ -13,12 +13,14 @@ class Loop
     @max_count = max_count
     @retry_wait = retry_wait
     @max_wait = max_wait
+    @influx_push = InfluxPush.new(config:)
+    @mapper = Mapper.new(config:)
   end
 
   attr_reader :config, :max_count, :retry_wait, :max_wait
 
   def start
-    return unless influx_ready?
+    return unless influx_push.wait_until_ready(timeout: max_wait)
 
     receive_thread =
       Thread.new do
@@ -62,21 +64,19 @@ class Loop
     push_thread&.exit
   end
 
-  def stop
-    mqtt_client&.disconnect
-  rescue MQTT::ProtocolException, StandardError => e
-    handle_exception(e)
-  end
-
   private
+
+  attr_reader :influx_push, :mapper
 
   # Receive MQTT messages and add the resulting records to the queue, for
   # InfluxPush to write - reconnects to the broker on error.
   def receive_loop
-    subscribe_topics
-    receive_messages
+    with_mqtt_client do |client|
+      subscribe_topics(client)
+      receive_messages(client)
+    end
   rescue MQTT::ProtocolException, StandardError => e
-    handle_exception(e)
+    logger.error "#{Time.now}: #{e}, will retry again in #{retry_wait} seconds..."
 
     sleep(retry_wait)
     # TODO: Use exponential backoff instead of fixed timeout
@@ -85,16 +85,35 @@ class Loop
     retry if max_count.nil?
   end
 
-  def subscribe_topics
-    # Subscribe to all topics
-    mapper.topics.each { |topic| mqtt_client.subscribe(topic) }
+  # Opens a connection for one attempt and closes it again, whatever ends the
+  # attempt: an error, max_count, or the kill of the receive thread. The client
+  # belongs to this loop alone, so a retry opens a new one and nothing outside
+  # can keep a connection that is already broken.
+  def with_mqtt_client
+    client = MQTT::Client.connect(mqtt_credentials)
+    yield client
+  ensure
+    disconnect(client)
   end
 
-  def receive_messages
+  # A connection that is already broken can refuse the disconnect as well,
+  # which must not replace the error that ended the attempt.
+  def disconnect(client)
+    client&.disconnect
+  rescue MQTT::ProtocolException, StandardError
+    nil
+  end
+
+  def subscribe_topics(client)
+    # Subscribe to all topics
+    mapper.topics.each { |topic| client.subscribe(topic) }
+  end
+
+  def receive_messages(client)
     # (Mostly) endless loop to receive messages
     count = 0
     loop do
-      topic, time, records = next_message
+      topic, time, records = next_message(client)
       influx_push.enqueue(records:, time: time.to_i, topic:) if records.any?
 
       count += 1
@@ -102,8 +121,8 @@ class Loop
     end
   end
 
-  def next_message
-    topic, message = mqtt_client.get
+  def next_message(client)
+    topic, message = client.get
 
     # There is no timestamp in the MQTT message, so we use the current time.
     # This travels with the records through the queue, so a write that's
@@ -126,35 +145,6 @@ class Loop
     [topic, time, records]
   end
 
-  # Wait until InfluxDB is reachable, for up to max_wait seconds
-  def influx_ready?
-    logger.info 'Wait until InfluxDB is ready ...'
-
-    started = monotonic_time
-    sleep 1 until (ready = influx_push.ready?) || waited_long_enough?(started)
-
-    if ready
-      logger.info 'InfluxDB is ready.'
-      true
-    else
-      waited = (monotonic_time - started).round
-      logger.error "InfluxDB not ready after #{waited} seconds - aborting."
-      false
-    end
-  end
-
-  # A ping can block for as long as the HTTP timeout, so the loop counts real
-  # seconds. Counting the attempts instead would report 12 seconds for a wait
-  # that took minutes.
-  def waited_long_enough?(started)
-    max_wait && monotonic_time - started >= max_wait
-  end
-
-  # Not affected by a change of the system clock, unlike Time.now
-  def monotonic_time
-    Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  end
-
   # Ends the receive thread and waits for it, so nothing reaches the queue
   # after this point. Thread#kill alone only asks the thread to stop, and a
   # message that arrives after that is counted but never written.
@@ -175,14 +165,6 @@ class Loop
     influx_push.run
   end
 
-  def influx_push
-    @influx_push ||= InfluxPush.new(config:)
-  end
-
-  def mqtt_client
-    @mqtt_client ||= MQTT::Client.connect(mqtt_credentials)
-  end
-
   def mqtt_credentials
     {
       host: config.mqtt_host,
@@ -192,17 +174,5 @@ class Loop
       password: config.mqtt_password,
       client_id: "mqtt-collector-#{SecureRandom.hex(4)}",
     }.compact
-  end
-
-  def mapper
-    @mapper ||= Mapper.new(config:)
-  end
-
-  def handle_exception(error)
-    logger.error "#{Time.now}: #{error}, will retry again in #{retry_wait} seconds..."
-
-    # Reset MQTT client, so it will reconnect next time
-    @mqtt_client&.disconnect
-    @mqtt_client = nil
   end
 end
