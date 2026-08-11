@@ -6,10 +6,10 @@ class InfluxPush
 
   def_delegators :config, :logger
 
-  def initialize(config:, queue:, retry_delay: 5)
+  def initialize(config:, retry_delay: 5)
     @config = config
-    @queue = queue
     @retry_delay = retry_delay
+    @queue = Queue.new
     @flux_writer = FluxWriter.new(config)
   end
 
@@ -19,16 +19,31 @@ class InfluxPush
     flux_writer.ready?
   end
 
+  # Hand a batch of records over to be written. The time travels with them,
+  # so a write delayed by a retry still lands at the point in time the values
+  # were actually received.
+  def enqueue(records:, time:)
+    queue << { records:, time: }
+  end
+
   # Push batches from the queue to InfluxDB, one at a time, for as long as
   # the queue is open. If InfluxDB is temporarily unreachable, the batch is
-  # put back into the queue and retried later instead of being dropped - it
-  # keeps its original measurement time, so a late write still lands at the
-  # point in time the values were actually received.
+  # put back into the queue and retried later instead of being dropped.
   def run
     until queue.closed?
       batch = queue.pop
       push(batch) if batch
     end
+  end
+
+  # Wait for the queue to drain, then close it so the run loop can finish
+  def shutdown
+    until queue.empty?
+      logger.info "Waiting for #{queue.size} batch(es) to be pushed to InfluxDB"
+      sleep 1
+    end
+
+    queue.close
   end
 
   private

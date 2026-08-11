@@ -16,11 +16,8 @@ class Loop
   end
 
   attr_reader :config, :max_count, :retry_wait, :max_wait
-  attr_accessor :queue
 
   def start
-    self.queue = Queue.new
-
     return unless influx_ready?
 
     receive_thread = Thread.new { receive_loop }
@@ -28,20 +25,14 @@ class Loop
 
     # Wait for the receive thread to finish (will happen if max_count is set)
     receive_thread.join
-
-    # Push any remaining records to InfluxDB
-    close_queue
-
-    # Wait for the push thread to finish (will happen because queue is closed)
-    push_thread.join
   rescue SystemExit, Interrupt
     logger.warn 'Exiting...'
 
     # Stop receiving MQTT messages
     receive_thread&.exit
-
+  ensure
     # Push any remaining records to InfluxDB (can take a while)
-    close_queue
+    influx_push.shutdown
 
     # Stop pushing data to InfluxDB
     push_thread&.exit
@@ -80,7 +71,7 @@ class Loop
     count = 0
     loop do
       time, records = next_message
-      queue << { records:, time: time.to_i } if records.any?
+      influx_push.enqueue(records:, time: time.to_i) if records.any?
 
       count += 1
       break if max_count && count >= max_count
@@ -136,17 +127,7 @@ class Loop
   end
 
   def influx_push
-    @influx_push ||= InfluxPush.new(config:, queue:)
-  end
-
-  # Wait for the queue to drain, then close it so the push thread can finish
-  def close_queue
-    until queue.empty?
-      logger.info "Waiting for #{queue.size} batch(es) to be pushed to InfluxDB"
-      sleep 1
-    end
-
-    queue.close
+    @influx_push ||= InfluxPush.new(config:)
   end
 
   def mqtt_client

@@ -84,10 +84,11 @@ describe Loop do
         allow(loop).to receive(:receive_loop)
         allow(loop).to receive(:push_loop)
 
-        fake_influx_push = instance_double(InfluxPush)
-        allow(fake_influx_push).to receive(:ready?).and_return(false, true)
         allow(loop).to receive(:influx_push).and_return(fake_influx_push)
+        allow(fake_influx_push).to receive(:ready?).and_return(false, true)
       end
+
+      let(:fake_influx_push) { instance_double(InfluxPush, shutdown: nil) }
 
       it 'waits and retries the readiness check before continuing' do
         loop.start
@@ -97,23 +98,19 @@ describe Loop do
       end
     end
 
-    context 'when the queue takes a moment to drain' do
+    context 'when shutting down' do
       before do
-        allow(loop).to receive(:sleep)
-        allow(loop).to receive(:influx_ready?).and_return(true)
+        allow(loop).to receive_messages(influx_ready?: true, influx_push: fake_influx_push)
         allow(loop).to receive(:receive_loop)
         allow(loop).to receive(:push_loop)
-
-        fake_queue = Queue.new
-        fake_queue << { records: [], time: 0 }
-        allow(fake_queue).to receive(:empty?).and_return(false, true)
-        allow(Queue).to receive(:new).and_return(fake_queue)
       end
 
-      it 'logs progress while waiting for the queue to drain' do
+      let(:fake_influx_push) { instance_double(InfluxPush, shutdown: nil) }
+
+      it 'lets InfluxPush write what is left before ending' do
         loop.start
 
-        expect(logger.info_messages).to include(/Waiting for 1 batch\(es\) to be pushed to InfluxDB/)
+        expect(fake_influx_push).to have_received(:shutdown)
       end
     end
   end
