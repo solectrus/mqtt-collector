@@ -13,6 +13,9 @@ NUMERIC_MAPPING_TYPES = %w[integer float].freeze
 # variable and silently return a wrong value, so a name is restricted to what
 # survives that step unchanged.
 MAPPING_NAME_REGEX = /\A[a-z_][a-z0-9_]*\z/
+# How long MAPPING_X_DEDUP holds a repeated value back without
+# MAPPING_X_HEARTBEAT_INTERVAL
+DEFAULT_HEARTBEAT_INTERVAL = 60
 DEPRECATED_ENV = {
   'MQTT_TOPIC_HOUSE_POW' => %w[house_power integer],
   'MQTT_TOPIC_GRID_POW' => %w[grid_power integer],
@@ -249,6 +252,7 @@ class Config
       validate_dedup!(mapping)
       validate_aggregate_interval!(mapping)
       validate_heartbeat_interval!(mapping)
+      warn_ineffective_dedup(mapping)
       validate_destination!(mapping)
     end
   end
@@ -315,6 +319,31 @@ class Config
     end
 
     validate_seconds!(mapping, :heartbeat_interval)
+  end
+
+  # On a mapping that aggregates, MAPPING_X_DEDUP compares the averages and not
+  # the single messages. A heartbeat can therefore only go out together with an
+  # average. If it is not longer than the aggregation window, every average
+  # passes and the deduplication does nothing. The default of 60 seconds counts
+  # too, because a mapping can aggregate over a longer window than that.
+  #
+  # This is a warning and not an error, because the test is necessary but not
+  # sufficient. The time between two averages is the window plus the time
+  # between two messages. Config does not know how often a topic sends, so a
+  # heartbeat that passes this test can still be too short to have an effect.
+  def warn_ineffective_dedup(mapping)
+    aggregate = mapping[:aggregate_interval]
+    return unless aggregate && mapping[:dedup] == 'true'
+
+    heartbeat = mapping[:heartbeat_interval] || DEFAULT_HEARTBEAT_INTERVAL
+    return if heartbeat.to_i > aggregate.to_i
+
+    logger.warn "Variable #{mapping_var(mapping, :dedup)}=true has no effect: " \
+                "#{mapping_var(mapping, :heartbeat_interval)} is " \
+                "#{heartbeat}#{' (the default)' unless mapping[:heartbeat_interval]}, " \
+                "which is not longer than #{mapping_var(mapping, :aggregate_interval)}=" \
+                "#{aggregate}. Every average is written. " \
+                'To deduplicate, use a multiple of the aggregation window.'
   end
 
   # An option that only controls writing does nothing on a mapping that is

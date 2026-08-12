@@ -1,6 +1,7 @@
 require 'evaluator'
-
-DEFAULT_HEARTBEAT_INTERVAL = 60
+# Holds DEFAULT_HEARTBEAT_INTERVAL, which Config validates against and Mapper
+# applies, so the two cannot disagree about what "no heartbeat given" means
+require 'config'
 
 class Mapper
   def initialize(config:)

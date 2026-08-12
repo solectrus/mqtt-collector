@@ -116,6 +116,77 @@ describe Config do
     end
   end
 
+  # A heartbeat that is not longer than the aggregation window lets every
+  # average pass, which takes the effect away from DEDUP. The collector says so
+  # and keeps running, because the test cannot prove the opposite: a longer
+  # heartbeat can be too short as well, depending on how often the topic sends.
+  describe 'deduplication of an aggregated mapping' do
+    subject(:config) { described_class.new(env, logger:) }
+
+    let(:logger) { MemoryLogger.new }
+
+    context 'when the heartbeat is not longer than the aggregation window' do
+      let(:env) do
+        valid_env.merge(
+          'MAPPING_0_AGGREGATE_INTERVAL' => '60',
+          'MAPPING_0_DEDUP' => 'true',
+          'MAPPING_0_HEARTBEAT_INTERVAL' => '60',
+        )
+      end
+
+      it 'starts anyway, but warns that the deduplication does nothing' do
+        expect(config).to be_a(described_class)
+        expect(logger.warn_messages).to eq(
+          ['Variable MAPPING_0_DEDUP=true has no effect: MAPPING_0_HEARTBEAT_INTERVAL is 60, ' \
+           'which is not longer than MAPPING_0_AGGREGATE_INTERVAL=60. Every average is written. ' \
+           'To deduplicate, use a multiple of the aggregation window.'],
+        )
+      end
+    end
+
+    # The default is not visible in the ENV, so the warning names it
+    context 'when the aggregation window outlasts the default heartbeat' do
+      let(:env) do
+        valid_env.merge('MAPPING_0_AGGREGATE_INTERVAL' => '300', 'MAPPING_0_DEDUP' => 'true')
+      end
+
+      it 'warns and names the default' do
+        expect(config).to be_a(described_class)
+        expect(logger.warn_messages).to eq(
+          ['Variable MAPPING_0_DEDUP=true has no effect: MAPPING_0_HEARTBEAT_INTERVAL is ' \
+           '60 (the default), which is not longer than MAPPING_0_AGGREGATE_INTERVAL=300. ' \
+           'Every average is written. To deduplicate, use a multiple of the aggregation window.'],
+        )
+      end
+    end
+
+    context 'when the heartbeat is longer than the aggregation window' do
+      let(:env) do
+        valid_env.merge(
+          'MAPPING_0_AGGREGATE_INTERVAL' => '60',
+          'MAPPING_0_DEDUP' => 'true',
+          'MAPPING_0_HEARTBEAT_INTERVAL' => '900',
+        )
+      end
+
+      it 'stays silent' do
+        expect(config).to be_a(described_class)
+        expect(logger.warn_messages).to be_empty
+      end
+    end
+
+    # Without DEDUP the heartbeat is never used, so a window longer than its
+    # default is no mistake
+    context 'when the mapping aggregates without deduplication' do
+      let(:env) { valid_env.merge('MAPPING_0_AGGREGATE_INTERVAL' => '300') }
+
+      it 'stays silent' do
+        expect(config).to be_a(described_class)
+        expect(logger.warn_messages).to be_empty
+      end
+    end
+  end
+
   describe 'mqtt credentials' do
     let(:env) { valid_env }
 
