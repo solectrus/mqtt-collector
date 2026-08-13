@@ -28,6 +28,20 @@ class InfluxPush
   # holds more than a day.
   MAX_QUEUE_SIZE = 100_000
 
+  # How many records one request to InfluxDB can carry. Without a limit, the
+  # queue of a long outage would go out as a single huge request, which can
+  # exceed what InfluxDB accepts. The InfluxDB documentation recommends 5000
+  # points per write.
+  MAX_RECORDS_PER_WRITE = 5_000
+
+  # How many seconds a write waits for more messages before it goes out. A
+  # broker sends the topics of one reading in the same moment, but a fast
+  # InfluxDB answers before the second message is even converted - so without
+  # this window every message gets its own request. The wait costs no accuracy,
+  # because every record keeps the time it arrived. It only happens when the
+  # queue runs empty, so a backlog still goes out at full speed.
+  LINGER = 1
+
   def initialize(config:, retry_delay: 5, shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT)
     @config = config
     @retry_delay = retry_delay
@@ -66,17 +80,15 @@ class InfluxPush
 
   # Hand a batch of records over to be written. The time travels with them,
   # so a write delayed by a retry still lands at the point in time the values
-  # were actually received. The topic travels with them as well, because two
-  # messages can carry the same number of records at the same second - only
-  # the topic tells their log lines apart.
-  def enqueue(records:, time:, topic:)
+  # were actually received.
+  def enqueue(records:, time:)
     # The counter and the queue have to change together. A shutdown kills the
     # thread that calls this, and a kill between the two steps would leave a
     # batch counted but not queued. The count would never reach zero again.
     Thread.handle_interrupt(Object => :never) do
       drop_oldest if queue.size >= MAX_QUEUE_SIZE
       change_pending(+1)
-      queue << { records:, time:, topic: }
+      queue << { records:, time: }
     end
   end
 
@@ -88,12 +100,14 @@ class InfluxPush
     @mutex.synchronize { @pending }
   end
 
-  # Push batches to InfluxDB, one at a time, until the queue is closed and
-  # empty. If InfluxDB is temporarily unreachable, the batch is put back into
-  # the queue and retried later instead of being dropped.
+  # Push batches to InfluxDB until the queue is closed and empty. Every batch
+  # that already waits goes out together with the first one, so the messages
+  # that arrive in the same second cost one request instead of one each. If
+  # InfluxDB is temporarily unreachable, the batches are put back into the
+  # queue and retried later instead of being dropped.
   def run
     while (batch = queue.pop)
-      push(batch)
+      push([batch, *waiting_batches(batch[:records].size)])
     end
   end
 
@@ -119,14 +133,36 @@ class InfluxPush
     timeout && monotonic_time - started >= timeout
   end
 
-  def push(batch)
-    flux_writer.push(batch[:records], time: batch[:time])
-    change_pending(-1)
-    logger.info "Successfully pushed #{describe(batch)} to InfluxDB"
+  # Collects the batches that go out together with the one the run loop holds:
+  # everything that is queued already, plus everything that arrives within the
+  # linger window.
+  def waiting_batches(records)
+    batches = []
+    deadline = monotonic_time + LINGER
+
+    while records < MAX_RECORDS_PER_WRITE && (batch = next_batch(deadline))
+      batches << batch
+      records += batch[:records].size
+    end
+
+    batches
+  end
+
+  # Takes the next batch, waiting for it until the window is over. A timeout of
+  # zero only takes what is there, which is what a shutdown needs: the batches
+  # in hand are the ones it waits for.
+  def next_batch(deadline)
+    remaining = shutting_down? ? 0 : deadline - monotonic_time
+
+    queue.pop(timeout: [remaining, 0].max)
+  end
+
+  def push(batches)
+    flux_writer.push(batches)
+    change_pending(-batches.size)
+    logger.info "Successfully pushed #{describe(batches)} to InfluxDB"
   rescue StandardError => e
-    # Only a batch that waits for another attempt needs a pause. A pause after
-    # a dropped batch would hold up the whole queue for nothing.
-    wait_before_retry if error_handling(batch, e)
+    error_handling(batches, e)
   end
 
   # Waits before the next attempt. A shutdown ends the wait at once, because
@@ -137,41 +173,56 @@ class InfluxPush
     @retry_wakeup.pop(timeout: retry_delay)
   end
 
-  def error_handling(batch, error)
+  def error_handling(batches, error)
     logger.error "Error while pushing to InfluxDB: #{error.message}"
 
     # After the shutdown gave up, a retry can never reach InfluxDB. The
-    # shutdown already named how many batches are lost, so the batch is only
-    # counted out here.
-    if giving_up?
-      change_pending(-1)
-      return false
-    end
+    # shutdown already named how many batches are lost, so the batches are
+    # only counted out here.
+    return change_pending(-batches.size) if giving_up?
+    return refuse(batches) if unacceptable?(error)
 
-    if unacceptable?(error)
-      logger.error "InfluxDB refused #{describe(batch)} - a retry sends the same data, " \
-                   'so the batch is dropped'
-      change_pending(-1)
-      return false
-    end
-
-    # Put the batch back into the queue, to retry later
-    queue << batch
-
-    logger.info "The batch has been queued again. Will retry #{pending} batch(es) later."
-    true
-  rescue ClosedQueueError
-    # The shutdown closed the queue while this batch was being written
-    logger.error "Dropping #{describe(batch)} - they were never written to InfluxDB"
-    change_pending(-1)
-    false
+    requeue(batches)
   end
 
-  # Names a batch in a log line. The push runs in its own thread, so the line
-  # does not follow the message it belongs to. The topic and the time say
-  # which message it is.
-  def describe(batch)
-    "#{batch[:records].size} record(s) from #{batch[:topic]} at #{Time.at(batch[:time])}"
+  # InfluxDB refuses one request for a single broken record, so a request that
+  # carries several batches can fail for one of them alone. Writing them one by
+  # one keeps the good ones and drops only the batch that is really refused.
+  def refuse(batches)
+    unless batches.one?
+      logger.warn "InfluxDB refused #{describe(batches)} - writing them one by one"
+      return batches.each { |batch| push([batch]) }
+    end
+
+    logger.error "InfluxDB refused #{describe(batches)} - a retry sends the same data, " \
+                 'so the batch is dropped'
+    change_pending(-1)
+  end
+
+  # Puts the batches back into the queue, to retry them later. Only batches
+  # that wait for another attempt get a pause. A pause after a dropped batch
+  # would hold up the whole queue for nothing.
+  def requeue(batches)
+    batches.each_with_index do |batch, index|
+      queue << batch
+    rescue ClosedQueueError
+      # The shutdown closed the queue while these batches were being written.
+      # Whatever did not get back into it can never be written.
+      lost = batches.drop(index)
+      logger.error "Dropping #{describe(lost)} - they were never written to InfluxDB"
+      return change_pending(-lost.size)
+    end
+
+    logger.info "Queued #{batches.size} batch(es) again. Will retry #{pending} batch(es) later."
+    wait_before_retry
+  end
+
+  # Names a request in a log line. It only counts what went into it: the push
+  # runs in its own thread, so the line does not follow the messages it belongs
+  # to - and those are already in the log, with their topics and their values.
+  def describe(batches)
+    "#{batches.sum { |batch| batch[:records].size }} record(s) " \
+      "from #{batches.size} message(s)"
   end
 
   # Keeps the newest data, because a dashboard shows the recent values first

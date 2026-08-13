@@ -19,10 +19,20 @@ describe FluxWriter do
   end
 
   describe '#push' do
-    it 'writes the records to InfluxDB', vcr: 'influx_success' do
-      records = [{ measurement: 'PV', field: 'battery_soc', value: 80.0 }]
+    let(:records) { [{ measurement: 'PV', field: 'battery_soc', value: 80.0 }] }
 
-      expect { flux_writer.push(records, time: 1_726_812_261) }.not_to raise_error
+    it 'writes the records to InfluxDB', vcr: 'influx_success' do
+      expect { flux_writer.push([{ records:, time: 1_726_812_261 }]) }.not_to raise_error
+    end
+
+    it 'writes several batches in one request, each with its own time', vcr: 'influx_success' do
+      flux_writer.push(
+        [{ records:, time: 1_726_812_261 }, { records:, time: 1_726_812_262 }],
+      )
+
+      expect(WebMock).to have_requested(:post, %r{/api/v2/write}).with(
+        body: "PV battery_soc=80.0 1726812261\nPV battery_soc=80.0 1726812262",
+      ).once
     end
   end
 end

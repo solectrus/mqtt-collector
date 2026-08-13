@@ -42,7 +42,9 @@ On startup, the collector waits (up to 12 seconds) for InfluxDB to become reacha
 
 While running, incoming MQTT messages are always received and converted immediately - they're never blocked by a slow or unreachable InfluxDB. Instead, they're queued in memory and written by a separate background process. If a write fails (e.g. because InfluxDB is temporarily unreachable), the batch stays queued and is retried automatically every 5 seconds, keeping its original measurement time - so once InfluxDB is reachable again, the backlog is delivered with the timestamps of when the values actually arrived, not when they were finally written.
 
-A batch that InfluxDB refuses outright is dropped instead of retried, because sending it again would produce the same answer. This applies to a broken line protocol (HTTP 400) and to a field that doesn't match the type it already has in InfluxDB (HTTP 422). Both are named in the log.
+Writes are combined: a request carries every batch that is queued when it starts, plus everything that arrives within one second after that - up to 5,000 records. The topics of one reading usually arrive together, so they cost one request instead of one each, and a backlog is delivered in a few large requests instead of thousands of small ones. The one-second window applies only while the queue is empty, so a backlog still goes out at full speed. It costs no accuracy either, because every record keeps the time it arrived.
+
+A batch that InfluxDB refuses outright is dropped instead of retried, because sending it again would produce the same answer. This applies to a broken line protocol (HTTP 400) and to a field that doesn't match the type it already has in InfluxDB (HTTP 422). Both are named in the log. If such a request carried several batches, they are written again one by one, so only the batch that is really broken is dropped.
 
 The queue holds at most 100,000 batches - more than a day at one message per second. Beyond that, the oldest batch makes room for the newest one, so a very long outage costs the beginning of the backlog instead of the whole container.
 

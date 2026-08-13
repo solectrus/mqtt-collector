@@ -11,9 +11,11 @@ class FluxWriter
     influx_client.ping.status == 'ok'
   end
 
-  def push(records, time:)
+  # Writes batches of records in a single request. Every batch keeps its own
+  # time, so a batch does not move to the time of the batch next to it.
+  def push(batches)
     write_api.write(
-      data: points(records, time:),
+      data: points(batches),
       bucket: config.influx_bucket,
       org: config.influx_org,
     )
@@ -21,7 +23,11 @@ class FluxWriter
 
   private
 
-  def points(records, time:)
+  def points(batches)
+    batches.flat_map { |batch| points_for(batch[:records], batch[:time]) }
+  end
+
+  def points_for(records, time)
     records.map do |record|
       InfluxDB2::Point.new(
         time:,
