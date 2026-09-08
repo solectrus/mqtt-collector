@@ -91,6 +91,10 @@ class Loop
   # can keep a connection that is already broken.
   def with_mqtt_client
     client = MQTT::Client.connect(mqtt_credentials)
+    # The counterpart of the error in receive_loop: a retry is silent
+    # otherwise, and a topic that rarely publishes leaves no other sign that
+    # the broker is reachable again.
+    logger.info "#{Time.now}: Connected to MQTT broker"
     yield client
   ensure
     disconnect(client)
