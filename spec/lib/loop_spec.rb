@@ -1,3 +1,4 @@
+require 'tmpdir'
 require 'loop'
 require 'config'
 
@@ -12,7 +13,10 @@ describe Loop do
   end
   let(:logger) { MemoryLogger.new }
   let(:fake_influx_push) do
-    instance_double(InfluxPush, wait_until_ready: true, run: nil, shutdown: nil, enqueue: nil)
+    instance_double(
+      InfluxPush,
+      wait_until_ready: nil, run: nil, shutdown: nil, enqueue: nil, unwritten_batches: [],
+    )
   end
 
   let(:server) do
@@ -21,6 +25,13 @@ describe Loop do
     server.logger = logger
     server
   end
+
+  # Keeps the buffer of the specs away from the one of a local run
+  before do
+    stub_const('BufferStore::DEFAULT_PATH', File.join(Dir.tmpdir, "mqtt-collector-spec-#{Process.pid}.jsonl"))
+  end
+
+  after { FileUtils.rm_f(BufferStore::DEFAULT_PATH) }
 
   describe '#start' do
     context 'when the MQTT server is running' do
@@ -182,6 +193,25 @@ describe Loop do
         loop.start
 
         expect(fake_influx_push).to have_received(:shutdown)
+      end
+
+      it 'saves the batches that InfluxDB did not get, for the next start' do
+        batch = { records: [{ measurement: 'PV', field: 'battery_soc', value: 80.0 }], time: 1_726_812_261 }
+        allow(fake_influx_push).to receive(:unwritten_batches).and_return([batch])
+
+        loop.start
+
+        expect(BufferStore.new(logger:).load).to eq([batch])
+      end
+
+      it 'restores the batches of the last shutdown before it starts' do
+        batch = { records: [{ measurement: 'PV', field: 'battery_soc', value: 80.0 }], time: 1_726_812_261 }
+        BufferStore.new(logger:).save([batch])
+
+        loop.start
+
+        expect(fake_influx_push).to have_received(:enqueue).with(**batch)
+        expect(File).not_to exist(BufferStore::DEFAULT_PATH)
       end
     end
   end

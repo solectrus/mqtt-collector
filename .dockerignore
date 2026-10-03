@@ -13,3 +13,4 @@ Dockerfile
 Guardfile
 Rakefile
 spec
+data

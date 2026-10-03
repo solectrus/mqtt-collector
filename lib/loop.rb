@@ -1,6 +1,7 @@
 require 'mqtt'
 require 'influxdb-client'
 require 'influx_push'
+require 'buffer_store'
 require 'mapper'
 
 class Loop
@@ -20,6 +21,9 @@ class Loop
   attr_reader :config, :max_count, :retry_wait, :max_wait
 
   def start
+    # Batches that did not reach InfluxDB before the last shutdown go first
+    restore_buffer
+
     influx_push.wait_until_ready(timeout: max_wait)
 
     receive_thread =
@@ -54,19 +58,28 @@ class Loop
     logger.warn 'Exiting...'
   ensure
     # Stop receiving MQTT messages first. Otherwise the queue keeps growing
-    # while it is drained, and the shutdown gives up on more than it had.
-    stop_receiving(receive_thread)
+    # while it is drained.
+    stop_thread(receive_thread)
 
     # Push any remaining records to InfluxDB (can take a while, but not forever)
     influx_push.shutdown
 
-    # Stop pushing data to InfluxDB
-    push_thread&.exit
+    # Stop pushing data to InfluxDB, then keep what is left for the next start
+    stop_thread(push_thread)
+    buffer_store.save(influx_push.unwritten_batches)
   end
 
   private
 
   attr_reader :influx_push, :mapper
+
+  def buffer_store
+    @buffer_store ||= BufferStore.new(logger:)
+  end
+
+  def restore_buffer
+    buffer_store.load.each { |batch| influx_push.enqueue(**batch) }
+  end
 
   # Receive MQTT messages and add the resulting records to the queue, for
   # InfluxPush to write - reconnects to the broker on error.
@@ -149,13 +162,13 @@ class Loop
     [time, records]
   end
 
-  # Ends the receive thread and waits for it, so nothing reaches the queue
-  # after this point. Thread#kill alone only asks the thread to stop, and a
-  # message that arrives after that is counted but never written.
+  # Ends a thread and waits for it. Thread#kill alone only asks the thread to
+  # stop: a receive thread could still add a message to the queue, and a push
+  # thread could still move a batch while the rest is saved.
   #
-  # Thread#join raises what the thread raised. start has already reported
-  # that, so it is ignored here.
-  def stop_receiving(thread)
+  # Thread#join raises what the thread raised. That has already reached the
+  # main thread, so it is ignored here.
+  def stop_thread(thread)
     return unless thread
 
     thread.kill

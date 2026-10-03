@@ -8,7 +8,7 @@ class InfluxPush
 
   # How long a shutdown waits for the queued batches to reach InfluxDB.
   # It stays below the 10 seconds Docker gives a container before it sends
-  # SIGKILL, so the collector can report what it lost instead of being killed
+  # SIGKILL, so the collector can save what is left instead of being killed
   # in the middle of the wait.
   DEFAULT_SHUTDOWN_TIMEOUT = 5
 
@@ -50,6 +50,7 @@ class InfluxPush
     @retry_wakeup = Queue.new
     @mutex = Mutex.new
     @pending = 0
+    @in_flight = []
     @flux_writer = FluxWriter.new(config)
   end
 
@@ -109,22 +110,36 @@ class InfluxPush
   # InfluxDB is temporarily unreachable, the batches are put back into the
   # queue and retried later instead of being dropped.
   def run
-    while (batch = queue.pop)
-      push([batch, *waiting_batches(batch[:records].size)])
+    while take_batches.any?
+      push(@in_flight)
+      @in_flight = []
     end
   end
 
-  # Wait for the pending batches to reach InfluxDB, then stop the run loop.
+  # Wait for the pending batches to reach InfluxDB. If they all did, the queue
+  # is closed and the run loop ends.
   #
   # The wait is limited, because InfluxDB can still be unreachable - without
-  # a limit the retries would keep the process alive until it is killed, and
-  # the queue would be lost anyway. Whatever is left over is named in the log
-  # instead of disappearing silently.
+  # a limit the retries would keep the process alive until it is killed. The
+  # run loop then keeps retrying until the caller ends its thread and saves
+  # the unwritten batches.
   def shutdown
     start_shutdown
     wait_for_pending
-    give_up
-    queue.close
+    queue.close if pending.zero?
+  end
+
+  # The batches that did not reach InfluxDB: the ones in the queue, plus the
+  # ones the run loop took for its current request. The list is complete only
+  # after the thread of the run loop has ended, because it moves batches
+  # between both places.
+  def unwritten_batches
+    batches = @in_flight.dup
+    batches << queue.pop(true) until queue.empty?
+
+    # A batch that waits for its retry is in both places. Writing it twice
+    # would do no harm, because InfluxDB replaces a point with the same time.
+    batches.uniq
   end
 
   private
@@ -136,19 +151,30 @@ class InfluxPush
     timeout && monotonic_time - started >= timeout
   end
 
-  # Collects the batches that go out together with the one the run loop holds:
-  # everything that is queued already, plus everything that arrives within the
-  # linger window.
-  def waiting_batches(records)
-    batches = []
+  # Takes the batches for the next request from the queue, none once the
+  # queue is closed and empty. A shutdown can end this thread at any time, so
+  # every batch goes into @in_flight as soon as it leaves the queue. The
+  # interrupt waits for the next blocking call: a kill in between would lose a
+  # batch that is in neither place.
+  def take_batches
+    Thread.handle_interrupt(Object => :on_blocking) do
+      batch = queue.pop
+      @in_flight = [batch].compact
+      add_waiting_batches(batch[:records].size) if batch
+    end
+
+    @in_flight
+  end
+
+  # Adds the batches that go out together with the first one: everything that
+  # is queued already, plus everything that arrives within the linger window.
+  def add_waiting_batches(records)
     deadline = monotonic_time + LINGER
 
     while records < MAX_RECORDS_PER_WRITE && (batch = next_batch(deadline))
-      batches << batch
+      @in_flight << batch
       records += batch[:records].size
     end
-
-    batches
   end
 
   # Takes the next batch, waiting for it until the window is over. A timeout of
@@ -170,7 +196,7 @@ class InfluxPush
   end
 
   # Waits before the next attempt. A shutdown ends the wait at once, because
-  # sleeping through its whole budget would lose the batches it waits for.
+  # sleeping through its whole budget would give the batches no second attempt.
   def wait_before_retry
     return sleep(SHUTDOWN_RETRY_DELAY) if shutting_down?
 
@@ -178,11 +204,6 @@ class InfluxPush
   end
 
   def error_handling(batches, error)
-    # After the shutdown gave up, a retry can never reach InfluxDB. The
-    # shutdown already named how many batches are lost, so the batches are
-    # only counted out here.
-    return change_pending(-batches.size) if giving_up?
-
     if unacceptable?(error)
       logger.error "Error while pushing to InfluxDB: #{error.message}"
       return refuse(batches)
@@ -242,18 +263,10 @@ class InfluxPush
 
   # Puts the batches back into the queue, to retry them later. Only batches
   # that wait for another attempt get a pause. A pause after a dropped batch
-  # would hold up the whole queue for nothing.
+  # would hold up the whole queue for nothing. The queue is still open,
+  # because the shutdown closes it only when no batch is pending.
   def requeue(batches)
-    batches.each_with_index do |batch, index|
-      queue << batch
-    rescue ClosedQueueError
-      # The shutdown closed the queue while these batches were being written.
-      # Whatever did not get back into it can never be written.
-      lost = batches.drop(index)
-      logger.error "Dropping #{describe(lost)} - they were never written to InfluxDB"
-      return change_pending(-lost.size)
-    end
-
+    batches.each { |batch| queue << batch }
     wait_before_retry
   end
 
@@ -293,7 +306,7 @@ class InfluxPush
     while pending.positive?
       if monotonic_time >= deadline
         logger.error "InfluxDB is still unreachable after #{shutdown_timeout} seconds - " \
-                     "giving up on #{pending} batch(es)"
+                     "#{pending} batch(es) not written"
         return
       end
 
@@ -311,16 +324,6 @@ class InfluxPush
 
   def shutting_down?
     @mutex.synchronize { @shutting_down }
-  end
-
-  # From here on a failed write is not retried anymore, so the run loop can
-  # finish instead of putting the batch back into a queue nobody drains.
-  def give_up
-    @mutex.synchronize { @giving_up = true }
-  end
-
-  def giving_up?
-    @mutex.synchronize { @giving_up }
   end
 
   def change_pending(delta)
