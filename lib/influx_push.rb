@@ -59,10 +59,11 @@ class InfluxPush
     flux_writer.ready?
   end
 
-  # Wait until InfluxDB is reachable, for up to timeout seconds, and report
-  # whether it is - the collector has nothing to do without InfluxDB. The name
-  # says that this waits, which a question mark would hide.
-  def wait_until_ready(timeout:) # rubocop:disable Naming/PredicateMethod
+  # Wait until InfluxDB is reachable, for up to timeout seconds. The collector
+  # starts anyway if it is not: an outage of an external InfluxDB must not stop
+  # the collection, because MQTT messages that nobody receives are gone. The
+  # queue keeps the records until a write succeeds.
+  def wait_until_ready(timeout:)
     logger.info 'Wait until InfluxDB is ready ...'
 
     started = monotonic_time
@@ -70,11 +71,13 @@ class InfluxPush
 
     if ready
       logger.info 'InfluxDB is ready.'
-      true
     else
+      # The outage is already reported, so the first failed write stays silent
+      @failing_since = started
+
       waited = (monotonic_time - started).round
-      logger.error "InfluxDB not ready after #{waited} seconds - aborting."
-      false
+      logger.error "InfluxDB not ready after #{waited} seconds - starting anyway, " \
+                   'records are kept in the queue until it is available'
     end
   end
 
@@ -161,6 +164,7 @@ class InfluxPush
     flux_writer.push(batches)
     change_pending(-batches.size)
     logger.info "Successfully pushed #{describe(batches)} to InfluxDB"
+    report_recovery
   rescue StandardError => e
     error_handling(batches, e)
   end
@@ -174,15 +178,52 @@ class InfluxPush
   end
 
   def error_handling(batches, error)
-    logger.error "Error while pushing to InfluxDB: #{error.message}"
-
     # After the shutdown gave up, a retry can never reach InfluxDB. The
     # shutdown already named how many batches are lost, so the batches are
     # only counted out here.
     return change_pending(-batches.size) if giving_up?
-    return refuse(batches) if unacceptable?(error)
 
+    if unacceptable?(error)
+      logger.error "Error while pushing to InfluxDB: #{error.message}"
+      return refuse(batches)
+    end
+
+    report_outage(error)
     requeue(batches)
+  end
+
+  # The first failure of an outage is logged with its details. Every retry
+  # after it adds a single line, so a glance at the end of the log shows that
+  # the collection goes on while InfluxDB is unreachable. The recovery names
+  # how long the outage took.
+  def report_outage(error)
+    if @failing_since
+      logger.error "InfluxDB unreachable for #{outage_duration} (#{error.message}) - " \
+                   "#{pending} batch(es) waiting, collecting continues"
+    else
+      @failing_since = monotonic_time
+      logger.error "Error while pushing to InfluxDB: #{error.message}"
+      logger.error 'Records are kept in the queue and pushed when InfluxDB is available again.'
+    end
+  end
+
+  def report_recovery
+    return unless @failing_since
+
+    logger.info "InfluxDB is available again after #{outage_duration}, #{pending} batch(es) remaining"
+    @failing_since = nil
+  end
+
+  # An outage can take seconds or days, so the unit follows its length
+  def outage_duration
+    seconds = (monotonic_time - @failing_since).round
+    return "#{seconds}s" if seconds < 60
+
+    minutes, seconds = seconds.divmod(60)
+    return "#{minutes}m #{seconds}s" if minutes < 60
+
+    hours, minutes = minutes.divmod(60)
+    "#{hours}h #{minutes}m"
   end
 
   # InfluxDB refuses one request for a single broken record, so a request that
@@ -213,7 +254,6 @@ class InfluxPush
       return change_pending(-lost.size)
     end
 
-    logger.info "Queued #{batches.size} batch(es) again. Will retry #{pending} batch(es) later."
     wait_before_retry
   end
 

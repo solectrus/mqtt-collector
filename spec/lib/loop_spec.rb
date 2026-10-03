@@ -82,14 +82,36 @@ describe Loop do
       let(:loop) { described_class.new(config:, max_count: 1, max_wait: 0) }
       let(:config) { Config.new(ENV.to_h, logger:) }
 
-      it 'aborts without ever subscribing to MQTT' do
+      it 'subscribes to MQTT anyway, so no message is lost' do
         stub_request(:get, 'http://localhost:8086/ping').to_raise(Errno::ECONNREFUSED)
-        allow(MQTT::Client).to receive(:connect)
+        client = instance_double(MQTT::Client, subscribe: nil, disconnect: nil)
+        allow(MQTT::Client).to receive(:connect).and_return(client)
+        allow(client).to receive(:get).and_return(['senec/0/ENERGY/GUI_BAT_DATA_FUEL_CHARGE', '80.0'])
+        # Without InfluxDB the shutdown would wait for the queued message
+        allow(InfluxPush).to receive(:new).and_wrap_original do |original, **args|
+          original.call(**args, shutdown_timeout: 0)
+        end
+        stub_request(:post, %r{/api/v2/write}).to_raise(Errno::ECONNREFUSED)
 
         loop.start
 
-        expect(MQTT::Client).not_to have_received(:connect)
-        expect(logger.error_messages).to include(/InfluxDB not ready after 0 seconds - aborting/)
+        expect(logger.error_messages).to include(/InfluxDB not ready after 0 seconds - starting anyway/)
+        expect(MQTT::Client).to have_received(:connect)
+        expect(logger.info_messages).to include(/PV:battery_soc = 80.0/)
+      end
+    end
+
+    context 'when the signal arrives while waiting for InfluxDB' do
+      before do
+        allow(loop).to receive(:influx_push).and_return(fake_influx_push)
+        allow(fake_influx_push).to receive(:wait_until_ready).and_raise(SignalException, 'TERM')
+      end
+
+      it 'shuts down before any thread is started' do
+        loop.start
+
+        expect(logger.warn_messages).to include(/Exiting/)
+        expect(fake_influx_push).to have_received(:shutdown)
       end
     end
 

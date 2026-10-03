@@ -29,7 +29,7 @@ describe InfluxPush do
       push = described_class.new(config:)
       allow(push).to receive(:sleep)
 
-      expect(push.wait_until_ready(timeout: 12)).to be true
+      push.wait_until_ready(timeout: 12)
 
       expect(logger.info_messages).to include(/Wait until InfluxDB is ready/)
       expect(logger.info_messages).to include(/InfluxDB is ready/)
@@ -44,9 +44,33 @@ describe InfluxPush do
       # A single attempt that blocks for 30 seconds, as an HTTP timeout does
       allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(0, 30, 30)
 
-      expect(push.wait_until_ready(timeout: 12)).to be false
+      push.wait_until_ready(timeout: 12)
 
-      expect(logger.error_messages).to include(/InfluxDB not ready after 30 seconds - aborting/)
+      expect(logger.error_messages).to include(/InfluxDB not ready after 30 seconds - starting anyway/)
+    end
+
+    it 'does not report the outage again on the first failed write' do
+      attempts = 0
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter, ready?: false).tap do |writer|
+          allow(writer).to receive(:push) do
+            attempts += 1
+            raise 'temporarily unreachable'
+          end
+        end,
+      )
+      push = described_class.new(config:, retry_delay: 0.01)
+      push.wait_until_ready(timeout: 0)
+
+      push.enqueue(records:, time:)
+      thread = Thread.new { push.run }
+      Timeout.timeout(2) { sleep 0.01 until attempts >= 2 }
+
+      expect(logger.error_messages.grep(/Error while pushing/)).to be_empty
+      expect(logger.error_messages).to include(/InfluxDB unreachable for \d+s/)
+
+      push.queue.close
+      thread.exit
     end
   end
 
@@ -149,7 +173,7 @@ describe InfluxPush do
       )
 
       expect(logger.error_messages).to include(/Error while pushing to InfluxDB: temporarily unreachable/)
-      expect(logger.info_messages).to include(/Queued 1 batch\(es\) again/)
+      expect(logger.error_messages).to include(/Records are kept in the queue/)
       expect(influx_push.pending).to eq(1)
 
       influx_push.queue.close
@@ -183,6 +207,51 @@ describe InfluxPush do
       expect(delivered[:time]).to eq(original_time)
       expect(logger.error_messages).to include(/Error while pushing to InfluxDB: temporarily unreachable/)
       expect(logger.info_messages).to include(/Successfully pushed 1 record\(s\)/)
+    end
+
+    it 'logs the details of the first failure, a status line for every retry, and the recovery' do
+      attempts = 0
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter).tap do |writer|
+          allow(writer).to receive(:push) do
+            attempts += 1
+            raise 'temporarily unreachable' if attempts <= 3
+          end
+        end,
+      )
+
+      influx_push.enqueue(records:, time:)
+      thread = Thread.new { influx_push.run }
+      Timeout.timeout(2) { sleep 0.01 until influx_push.pending.zero? }
+
+      expect(attempts).to eq(4)
+      expect(logger.error_messages.grep(/Error while pushing/).size).to eq(1)
+      expect(logger.error_messages.grep(
+        /InfluxDB unreachable for 0s \(temporarily unreachable\) - 1 batch\(es\) waiting, collecting continues/,
+      ).size).to eq(2)
+      expect(logger.info_messages).to include(/InfluxDB is available again after 0s, 0 batch\(es\) remaining/)
+
+      influx_push.shutdown
+      thread.join
+    end
+  end
+
+  describe 'the duration of an outage' do
+    {
+      59 => '59s',
+      60 => '1m 0s',
+      3599 => '59m 59s',
+      3600 => '1h 0m',
+      90_061 => '25h 1m',
+    }.each do |seconds, text|
+      it "names #{seconds} seconds as #{text}" do
+        influx_push.instance_variable_set(:@failing_since, 0)
+        allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC).and_return(seconds)
+
+        influx_push.send(:report_recovery)
+
+        expect(logger.info_messages).to include(/available again after #{text},/)
+      end
     end
   end
 
@@ -247,7 +316,7 @@ describe InfluxPush do
       influx_push.enqueue(records:, time:)
 
       thread = Thread.new { influx_push.run }
-      Timeout.timeout(2) { sleep 0.01 until logger.info_messages.any?(/Queued 1 batch\(es\) again/) }
+      Timeout.timeout(2) { sleep 0.01 until logger.error_messages.any?(/Records are kept in the queue/) }
 
       expect(influx_push.pending).to eq(1)
 
@@ -383,18 +452,26 @@ describe InfluxPush do
     end
 
     it 'shortens the pause between retries, so a batch gets more than one attempt' do
-      allow(FluxWriter).to receive(:new).and_return(always_failing_flux_writer)
+      attempts = 0
+      allow(FluxWriter).to receive(:new).and_return(
+        instance_double(FluxWriter).tap do |writer|
+          allow(writer).to receive(:push) do
+            attempts += 1
+            raise 'temporarily unreachable'
+          end
+        end,
+      )
       # The regular delay is longer than the whole shutdown budget
       influx_push = described_class.new(config:, retry_delay: 60, shutdown_timeout: 1)
 
       influx_push.enqueue(records:, time:)
       thread = Thread.new { influx_push.run }
-      Timeout.timeout(2) { sleep 0.01 until logger.error_messages.any?(/Error while pushing/) }
+      Timeout.timeout(2) { sleep 0.01 until attempts == 1 }
 
       Timeout.timeout(5) { influx_push.shutdown }
 
       expect(thread.join(2)).to eq(thread)
-      expect(logger.error_messages.grep(/Error while pushing/).size).to be > 1
+      expect(attempts).to be > 2
       expect(influx_push.pending).to eq(0)
     end
 

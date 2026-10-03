@@ -20,7 +20,7 @@ class Loop
   attr_reader :config, :max_count, :retry_wait, :max_wait
 
   def start
-    return unless influx_push.wait_until_ready(timeout: max_wait)
+    influx_push.wait_until_ready(timeout: max_wait)
 
     receive_thread =
       Thread.new do
