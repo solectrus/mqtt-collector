@@ -10,7 +10,6 @@
 coverage
 compose.yml
 Dockerfile
-Guardfile
 Rakefile
 spec
 data
