@@ -12,7 +12,7 @@ GEM
       bigdecimal
       rexml
     csv (3.3.7)
-    dentaku (4.2.0)
+    dentaku (4.2.1)
       bigdecimal (>= 3.1)
       concurrent-ruby (~> 1.1)
       tsort (>= 0.1.1)
